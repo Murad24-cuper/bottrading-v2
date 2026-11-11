@@ -21,3 +21,5 @@ __pycache__/
 .env
 .coverage
 data/
+
+test_log.txt
