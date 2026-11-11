@@ -66,7 +66,7 @@ class TradingBot:
         self.notifier=TelegramNotifier(rate_limit_minutes=notify_cfg.get('rate_limit_minutes',5))
         self.telegram_commands=TelegramCommandPoller(self.db,ttl_seconds=int(cfg.get('live',{}).get('command_ttl_seconds',60)))
         self._health_failures=0; self._entries_health_blocked=False; self._trade_allowed=False; self._last_daily_summary=''; self._last_maintenance_day=''
-        self._data_dir=data_dir; self._brain_drift_checked=0.0
+        self._data_dir=data_dir; self._brain_drift_checked=0.0; self._charts_written=-1e9; self._backup_day=None
         self._protection_notified: set = set()
         self._history_refresh_cycle=0
         self._last_notified_trade_id=self.db.latest_trade_id() if hasattr(self.db,'latest_trade_id') else 0
@@ -107,8 +107,12 @@ class TradingBot:
         if not brain.get('enabled',False) or self.monotonic()-self._brain_drift_checked<60: return
         self._brain_drift_checked=self.monotonic()
         from .brain.drift import assess_live_drift
-        rows=self.db.get_recent_brain_outcomes(int(brain.get('live_drift_window',100)),self.settings.magic_number)
-        result=assess_live_drift(rows,int(brain.get('live_drift_window',100)),float(brain.get('live_max_calibration_error',.1)),float(brain.get('live_min_expectancy_r',0)))
+        learning=self.settings.config.get('self_learning',{})
+        # Drift settings live under self_learning in config.yaml; brain.* overrides when present.
+        def drift_setting(key,default): return brain.get(key,learning.get(key,default))
+        window=int(drift_setting('live_drift_window',100))
+        rows=self.db.get_recent_brain_outcomes(window,self.settings.magic_number)
+        result=assess_live_drift(rows,window,float(drift_setting('live_max_calibration_error',.1)),float(drift_setting('live_min_expectancy_r',0)))
         if not result['trigger']: return
         brain['enabled']=False; brain['shadow']=True
         path=self._data_dir/'brain'/'live_gate.json'; path.parent.mkdir(parents=True,exist_ok=True)
@@ -444,6 +448,30 @@ class TradingBot:
         else:
             signal=candidate.signal
             self.db.insert_signal(time=self._now().isoformat(),symbol=signal.symbol,strategy=signal.strategy_name,direction=signal.direction,timeframe=signal.timeframe,confidence=signal.confidence,entry=signal.entry_hint,sl=signal.sl_price,tp=signal.tp_price,expected_cost=float(candidate.cost.get('cost',0)),score=float(candidate.score),taken=int(taken),skip_reason=reason or '')
+    def _backup_database(self,now):
+        """Once per UTC day copy bot.db to data/backups (keeps backup.keep_days copies)."""
+        cfg=self.settings.config.get('backup',{})
+        if not cfg.get('enabled',True) or self._backup_day==now.date(): return
+        self._backup_day=now.date()
+        try:
+            from .db import backup_database
+            path=getattr(self.db,'path',None)
+            if path is None: return
+            made=backup_database(path,Path(self._data_dir)/'backups',int(cfg.get('keep_days',7)),now.date())
+            if made: log.info('Database backup written: %s',made.name)
+        except Exception as exc:
+            log.warning('Database backup failed: %s',exc)
+    def _write_position_charts(self):
+        """Best-effort price snapshots for dashboard charts; never interrupts trading."""
+        interval=float(self.settings.config.get('dashboard',{}).get('chart_refresh_seconds',15))
+        if interval<=0 or self.monotonic()-self._charts_written<interval: return
+        self._charts_written=self.monotonic()
+        try:
+            from .position_charts import write_position_charts
+            rows={int(row['ticket']):row for row in self.db.get_open_trades()} if hasattr(self.db,'get_open_trades') else {}
+            write_position_charts(self.client.mt5,self._owned_positions(),self._data_dir,rows)
+        except Exception as exc:
+            log.debug('Position chart snapshot skipped: %s',exc)
     def _owned_positions(self):
         mt5=self.client.mt5
         return [p for p in (mt5.positions_get() or []) if int(p.magic)==self.settings.magic_number]
@@ -477,7 +505,12 @@ class TradingBot:
             from .protections import check_protections
             cutoff=now-timedelta(hours=float(protection_cfg.get('drawdown_window_hours',24)))
             trades=self.db.get_recent_symbol_trades(candidate.symbol,100,self.settings.magic_number) if hasattr(self.db,'get_recent_symbol_trades') else []
-            equity=self.db.get_equity_snapshots_since(cutoff) if hasattr(self.db,'get_equity_snapshots_since') else []
+            login=getattr(self.client,'account_login',None)
+            # Only this account's equity: switching accounts must never look like a drawdown.
+            equity=(self.db.get_equity_snapshots_since(cutoff,login) if login else self.db.get_equity_snapshots_since(cutoff)) if hasattr(self.db,'get_equity_snapshots_since') else []
+            if self._last_account_type=='DEMO' and 'demo_risk' in self.settings.config:
+                from .risk_profile import account_risk_profile
+                protection_cfg={**protection_cfg,'rolling_drawdown_pct':account_risk_profile(self.settings.config,True)['rolling_drawdown_pct']}
             blocked,protection_reason=check_protections(trades,equity,candidate.symbol,now,protection_cfg)
             key=(candidate.symbol,protection_reason)
             if blocked:
@@ -522,8 +555,13 @@ class TradingBot:
                 self._event('WARNING',message); self._notify('weekend_disabled','Həftəsonu rejimi son 20 əməliyyatın mənfi nəticəsinə görə 7 gün söndürüldü.')
             return False
         trade_mode=('weekend_exploration' if weekend else 'exploration') if exploration_eligible else ('weekend' if weekend else 'main')
-        risk_pct=float(exploration_cfg.get('risk_per_trade_pct',.1)) if exploration_eligible else self.settings.risk.risk_per_trade_pct
-        if weekend: risk_pct=min(risk_pct,float(weekend_cfg.get('risk_per_trade_pct',risk_pct)))
+        from .risk_profile import applied_risk_pct,is_demo_account
+        account_demo=is_demo_account(state,self.client.mt5)
+        if 'demo_risk' in self.settings.config:
+            risk_pct=applied_risk_pct(self.settings.config,account_demo,trade_mode,getattr(candidate,'features',None))
+        else:
+            risk_pct=float(exploration_cfg.get('risk_per_trade_pct',.1)) if exploration_eligible else self.settings.risk.risk_per_trade_pct
+            if weekend: risk_pct=min(risk_pct,float(weekend_cfg.get('risk_per_trade_pct',risk_pct)))
         gate_settings=self.settings
         if weekend:
             risk_config=dict(self.settings.config['risk']); risk_config['max_open_positions']=min(int(risk_config['max_open_positions']),int(weekend_cfg.get('max_open_positions',3)))
@@ -541,6 +579,16 @@ class TradingBot:
         cost_per_lot=float(candidate.cost.get('cost',0) or 0)/max(float(getattr(candidate,'volume',planned_volume) or planned_volume),1e-12)
         cost_per_lot+=2*float(self.settings.config.get('cost_model',{}).get('slippage_points',0))*point/tick_size*tick_value if tick_size>0 else float('inf')
         volume,volume_reason=calc_volume_stressed(state.equity,risk_pct,signal.entry_hint,signal.sl_price,spec,cost_per_lot)
+        min_lot=(getattr(candidate,'features',None) or {}).get('min_lot',{})
+        if isinstance(min_lot,dict) and min_lot.get('active') and volume>0:
+            # Small-balance trade: only ever the broker minimum lot, re-checked with stressed costs.
+            from .risk import min_lot_risk_money
+            from .risk_profile import min_lot_cap_pct
+            needed=min_lot_risk_money(signal.entry_hint,signal.sl_price,spec,cost_per_lot)
+            cap=min_lot_cap_pct(self.settings.config,account_demo)
+            if needed is None or cap<=0 or needed>float(state.equity)*cap/100:
+                volume,volume_reason=0,'min lot exceeds small-account cap after costs'
+            else: volume=float(spec.get('volume_min'))
         if volume<=0:
             self._signal_update(candidate,False,volume_reason); return False
         risk_limit_pct=float(self.settings.config.get('risk',{}).get('max_total_open_risk_pct',5.0))
@@ -727,13 +775,17 @@ class TradingBot:
         health_ok=self._health(now)
         self.executor.sync_positions(); getattr(self.executor,'enforce_adverse_move_exit',lambda *_:None)(self.settings); getattr(self.executor,'enforce_news_positions',lambda *_:[])(getattr(self.scanner,'_news_events',[]),now); self.executor.enforce_time_stop(self._management_settings(now)); self.executor.enforce_session_close(self.settings,now)
         self._notify_closed_losses()
+        self._write_position_charts()
+        self._backup_database(now)
         pnl_today,pnl_week=self._pnl_periods(now)
         open_rows={int(row['ticket']):row for row in self.db.get_open_trades()}
         floating=sum(float(p.profit)+float(getattr(p,'swap',0) or 0)+float(open_rows.get(int(p.ticket),{}).get('commission') or 0) for p in self._owned_positions())
-        if pnl_today+floating<=-float(state.balance)*float(self.settings.config['risk']['daily_loss_limit_pct'])/100 and self._daily_limit_alert_day!=now.date().isoformat():
+        from .risk_profile import is_demo_account,loss_limits
+        daily_limit_pct,weekly_limit_pct=loss_limits(self.settings.config,is_demo_account(state,self.client.mt5)) if 'demo_risk' in self.settings.config else (float(self.settings.config['risk']['daily_loss_limit_pct']),float(self.settings.config['risk']['weekly_loss_limit_pct']))
+        if pnl_today+floating<=-float(state.balance)*daily_limit_pct/100 and self._daily_limit_alert_day!=now.date().isoformat():
             self._notify('daily_loss','🛑 Gündəlik zərər limiti doldu; yeni əməliyyatlar dayandırıldı.'); self._daily_limit_alert_day=now.date().isoformat()
         week_key=(now-timedelta(days=now.weekday())).date().isoformat()
-        if pnl_week+floating<=-float(state.balance)*float(self.settings.config['risk']['weekly_loss_limit_pct'])/100 and self._weekly_limit_alert_week!=week_key:
+        if pnl_week+floating<=-float(state.balance)*weekly_limit_pct/100 and self._weekly_limit_alert_week!=week_key:
             self._notify('weekly_loss','🛑 Həftəlik zərər limiti doldu; yeni əməliyyatlar dayandırıldı.'); self._weekly_limit_alert_week=week_key
         risk_cfg=self.settings.config['risk']
         self._check_brain_drift()
@@ -782,7 +834,7 @@ class TradingBot:
         allow_entries=health_ok and self.consecutive_errors<int(self.live['max_cycle_errors']) and not self.trading_disabled
         week_start=week_key
         weekly=self.db.get_or_create_week_start(week_start,state.balance)
-        weekly_limit=float(weekly['start_balance'])*(1-float(risk_cfg['weekly_loss_limit_pct'])/100)
+        weekly_limit=float(weekly['start_balance'])*(1-weekly_limit_pct/100)
         if float(state.equity)<=weekly_limit and not int(weekly.get('stopped') or 0):
             self.executor.close_all('weekly_stop'); self.db.mark_week_stopped(week_start)
             self._notify('weekly_drawdown_stop','🛑 Həftəlik kapital limiti aşıldı; bot mövqeləri bağladı və dayandı.')
@@ -815,7 +867,7 @@ class TradingBot:
         if now.weekday()==int(db_cfg.get('vacuum_weekday_utc',6)) and not positions and not self.db.maintenance_done('vacuum',vacuum_key):
             self.db.vacuum(); self.db.mark_maintenance_done('vacuum',vacuum_key,now)
         if self.monotonic()-self._last_snapshot>=int(self.live['equity_snapshot_seconds']):
-            self.db.insert_equity_snapshot(time=now.isoformat(),balance=state.balance,equity=state.equity,margin=state.margin,free_margin=state.free_margin,open_positions=len(positions))
+            self.db.insert_equity_snapshot(time=now.isoformat(),balance=state.balance,equity=state.equity,margin=state.margin,free_margin=state.free_margin,open_positions=len(positions),login=getattr(self.client,'account_login',None))
             self._last_snapshot=self.monotonic()
         if not self.trading_disabled: self.last_error=''
         self._set_status('managing_only' if self.trading_disabled else 'running',state.equity)

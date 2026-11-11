@@ -28,6 +28,19 @@ def calc_volume(equity: float, risk_pct: float, entry: float, sl: float, symbol_
     return (volume,'ok') if volume>=minimum else (0,'min lot exceeds risk')
 
 
+def min_lot_risk_money(entry: float, sl: float, symbol_spec: dict, extra_cost_per_lot: float=0.0) -> float|None:
+    """Money lost at the stop with the broker's minimum volume (plus optional cost per lot)."""
+    distance=abs(float(entry)-float(sl))
+    tick_value=float(symbol_spec.get('trade_tick_value_loss') or symbol_spec.get('trade_tick_value') or symbol_spec.get('tick_value') or 0)
+    tick_size=float(symbol_spec.get('trade_tick_size') or symbol_spec.get('tick_size') or 0)
+    contract_size=float(symbol_spec.get('trade_contract_size') or symbol_spec.get('contract_size') or 0)
+    if tick_value<=0 and contract_size>0 and tick_size>0: tick_value=contract_size*tick_size
+    minimum=float(symbol_spec.get('volume_min') or 0)
+    values=(distance,tick_value,tick_size,minimum,float(extra_cost_per_lot))
+    if not all(math.isfinite(x) for x in values) or distance<=0 or tick_value<=0 or tick_size<=0 or minimum<=0: return None
+    return (distance/tick_size*tick_value+max(0.0,float(extra_cost_per_lot)))*minimum
+
+
 def calc_volume_stressed(equity: float, risk_pct: float, entry: float, sl: float,
                          symbol_spec: dict, extra_cost_per_lot: float) -> tuple[float,str]:
     """Size so stop loss plus conservative per-lot costs stay inside the risk budget."""
@@ -84,8 +97,10 @@ def check_trade_allowed(signal, account, open_positions, pnl_today, pnl_week, se
     if session_closing: return False,'symbol session closes soon'
     floating=sum(float(_value(p,'profit',0) or 0) for p in open_positions)
     balance=float(_value(account,'balance',_value(account,'equity',0)))
-    if float(pnl_today)+floating<=-balance*risk['daily_loss_limit_pct']/100: return False,'daily loss limit reached'
-    if float(pnl_week)+floating<=-balance*risk['weekly_loss_limit_pct']/100: return False,'weekly loss limit reached'
+    from .risk_profile import is_demo_account,loss_limits
+    daily_limit,weekly_limit=loss_limits(config,is_demo_account(account)) if 'demo_risk' in config else (risk['daily_loss_limit_pct'],risk['weekly_loss_limit_pct'])
+    if float(pnl_today)+floating<=-balance*daily_limit/100: return False,'daily loss limit reached'
+    if float(pnl_week)+floating<=-balance*weekly_limit/100: return False,'weekly loss limit reached'
     if len(open_positions)>=risk['max_open_positions']: return False,'maximum open positions reached'
     if sum(_group(p)==symbol_group for p in open_positions)>=risk['max_positions_per_group']: return False,'maximum positions for asset group reached'
     if any(_value(p,'symbol')==signal.symbol for p in open_positions): return False,'symbol already has open position'
@@ -93,7 +108,9 @@ def check_trade_allowed(signal, account, open_positions, pnl_today, pnl_week, se
     if symbol_cooldown: return False,'symbol cooldown active'
     if int(symbol_trades_today)>=risk['max_trades_per_symbol_per_day']: return False,'maximum trades for symbol today reached'
     if int(trades_today)>=int(risk.get('max_trades_per_day',150)): return False,'maximum trades today reached'
-    if int(trades_today)>=10 and int(group_trades_today)>=math.ceil(float(risk.get('max_group_share_today',1.0))*int(trades_today)):
+    group_share=float(risk.get('max_group_share_today',0) or 0)
+    # 0 (or >= 1) disables the rule; only 0 < share < 1 limits one group's share of today's trades.
+    if 0<group_share<1 and int(trades_today)>=10 and int(group_trades_today)>=math.ceil(group_share*int(trades_today)):
         return False,'maximum asset-group share today reached'
     candidate_underlying=underlying_key(signal.symbol); candidate_group=underlying_group(signal.symbol,symbol_group)
     for position in open_positions:

@@ -83,6 +83,19 @@ def main() -> int:
     write_parquet(reference[~reference.weekend.astype(bool)],brain_dir/'weekday_reference.parquet',index=False)
     # Store transformed vectors in the labeled set after keeping a separate full outcome file.
     write_parquet(outcomes,outcome_path,index=False)
+    # OOD guard: distance cutoff from VALIDATION rows to the TRAIN memory. Live queries
+    # farther than this are "unfamiliar" and the brain abstains from sizing them.
+    validation=outcomes[outcomes.split=='validation']
+    ood_summary=None
+    if len(validation):
+        from src.brain.ood import fit_ood_guard_fast
+        guard=fit_ood_guard_fast(np.asarray(reference.vector.tolist(),dtype=np.float32),np.asarray(validation.vector.tolist(),dtype=np.float32),
+                                 float(settings.config.get('brain',{}).get('ood_percentile',99.0)))
+        guard['fitted_at_utc']=pd.Timestamp.now(tz='UTC').isoformat()
+        (brain_dir/'ood_guard.json').write_text(json.dumps(guard,indent=2),encoding='utf-8')
+        ood_summary={'threshold':guard['threshold'],'percentile':guard['percentile']}
+    else:
+        print('No validation rows; OOD guard not fitted. Brain cannot size live risk until it is.')
     stats={split_name:int((outcomes.split==split_name).sum()) for split_name in ('train','validation','test','purged')}
     stop_monitor.set(); watcher.join(timeout=2)
     used=_memory_mb()
@@ -94,7 +107,7 @@ def main() -> int:
         'symbols':sorted(reference.symbol.unique().tolist()),
         'win_rate_by_split':{name:float(outcomes.loc[outcomes.split==name,'win'].mean()) for name in stats if stats[name]},
         'mean_net_r_by_split':{name:float(outcomes.loc[outcomes.split==name,'net_r'].mean()) for name in stats if stats[name]},
-        'pca_dimensions':int(pca['components'].shape[0]),'pca_fit_rows':len(vectors),
+        'pca_dimensions':int(pca['components'].shape[0]),'pca_fit_rows':len(vectors),'ood_guard':ood_summary,
         'elapsed_seconds':round(time.perf_counter()-started,2),'process_memory_mb_peak':round(peak[0],2),
         'label_method':'next-bar entry; configured ATR-scaled SL/TP; stop-first OHLC; spread, slippage, commission; UTC time barrier'}
     (brain_dir/'dataset_summary.json').write_text(json.dumps(summary,indent=2),encoding='utf-8')

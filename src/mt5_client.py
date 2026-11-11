@@ -128,6 +128,15 @@ class MT5Client:
             account=self.mt5.account_info()
         if account is None:
             err=self.mt5.last_error(); self.mt5.shutdown(); raise RuntimeError(f'MT5 account_info failed: {err}')
+        expected=int(self.settings.mt5_login) if self.settings.mt5_login else None
+        if expected is not None and int(getattr(account,'login',0) or 0)!=expected:
+            # The terminal was logged into another account: switch to the .env account or refuse to trade.
+            log.warning('MT5 terminal is on account ***%s, .env expects ***%s; switching',str(getattr(account,'login',''))[-3:],str(expected)[-3:])
+            switched=self.mt5.login(expected,password=self.settings.mt5_password,server=self.settings.mt5_server)
+            account=self.mt5.account_info() if switched else None
+            if account is None or int(getattr(account,'login',0) or 0)!=expected:
+                err=self.mt5.last_error(); self.mt5.shutdown()
+                raise RuntimeError(f'MT5 is not on the .env account (MT5_LOGIN ***{str(expected)[-3:]}); refusing to trade on another account: {err}')
         demo_mode=getattr(self.mt5,'ACCOUNT_TRADE_MODE_DEMO',0)
         configured_mode=self.settings.config['account']['mode']
         if account.trade_mode!=demo_mode and (not self.settings.allow_real or configured_mode!='real'):
@@ -137,6 +146,7 @@ class MT5Client:
             err=self.mt5.last_error(); self.mt5.shutdown(); raise RuntimeError(f'MT5 terminal_info failed: {err}')
         if not terminal.trade_allowed: log.warning('MT5 algorithmic trading is disabled in terminal settings')
         mode='hedging' if account.margin_mode==getattr(self.mt5,'ACCOUNT_MARGIN_MODE_RETAIL_HEDGING',2) else 'netting'
+        self.account_login=int(getattr(account,'login',0) or 0) or None
         log.info('Connected to account ***%s; margin mode=%s',str(account.login)[-3:],mode)
         self._unhealthy=False
         return self

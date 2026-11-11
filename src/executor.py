@@ -1,7 +1,7 @@
 """MT5 order execution limited to positions carrying the configured magic."""
 from __future__ import annotations
 from datetime import datetime,timezone,timedelta
-import math,json
+import math,json,threading
 from decimal import Decimal,ROUND_FLOOR
 from .models import TradeResult
 from .logger import get_logger
@@ -16,6 +16,7 @@ class Executor:
     def __init__(self,mt5,settings,db,symbol_service=None):
         self.mt5,self.settings,self.db,self.symbol_service=mt5,settings,db,symbol_service
         self._in_flight: set[str] = set()
+        self._in_flight_lock=threading.Lock()
     def kill_switch_active(self): return (self.settings.root/'STOP').exists() or (self.settings.root/'STOP.txt').exists()
     def _event(self,message,level='INFO'):
         log.log(getattr(__import__('logging'),level),message)
@@ -59,13 +60,30 @@ class Executor:
         request={'action':int(self.mt5.TRADE_ACTION_DEAL),'symbol':str(signal.symbol),'volume':float(volume),'type':int(self.mt5.ORDER_TYPE_BUY if buy else self.mt5.ORDER_TYPE_SELL),'price':float(price),'sl':float(stop),'tp':float(target),'deviation':int(self.settings.config['executor']['deviation_points']),'magic':int(self.settings.magic_number),'comment':self._comment(trade_comment),'type_time':int(self.mt5.ORDER_TIME_GTC),'type_filling':int(filling)}
         return {'request':request,'volume':volume,'price':price,'sl':stop,'tp':target}
     def open_trade(self,signal,volume,expected_cost=None,features=None):
-        if signal.symbol in self._in_flight:
-            return self._failure(f'Refused open: order for {signal.symbol} is already in-flight', volume)
-        self._in_flight.add(signal.symbol)
+        with self._in_flight_lock:
+            if signal.symbol in self._in_flight: busy=True
+            else: busy=False; self._in_flight.add(signal.symbol)
+        if busy: return self._failure(f'Refused open: order for {signal.symbol} is already in-flight', volume)
         try:
             return self._open_trade_internal(signal, volume, expected_cost=expected_cost, features=features)
         finally:
-            self._in_flight.discard(signal.symbol)
+            with self._in_flight_lock: self._in_flight.discard(signal.symbol)
+    @staticmethod
+    def _level_distance(info,name):
+        try: return max(0.0,float(getattr(info,name,0) or 0)*float(getattr(info,'point',0) or 0))
+        except (TypeError,ValueError): return 0.0
+    def _freeze_reason(self,p,info,tick):
+        """Return why the broker would reject a change to this position (TRADE_RETCODE_FROZEN), else None.
+
+        MT5 rule: a position cannot be modified or closed while the closing price is
+        within SYMBOL_TRADE_FREEZE_LEVEL points of its current SL or TP."""
+        freeze=self._level_distance(info,'trade_freeze_level')
+        if freeze<=0 or tick is None: return None
+        is_buy=p.type==self.mt5.POSITION_TYPE_BUY; price=float(tick.bid if is_buy else tick.ask)
+        sl=float(getattr(p,'sl',0) or 0); tp=float(getattr(p,'tp',0) or 0)
+        if sl>0 and abs(price-sl)<=freeze: return f'price {price} is within freeze level {freeze} of SL {sl}'
+        if tp>0 and abs(tp-price)<=freeze: return f'price {price} is within freeze level {freeze} of TP {tp}'
+        return None
 
     def _open_trade_internal(self,signal,volume,expected_cost=None,features=None):
         m=self.mt5
@@ -91,6 +109,11 @@ class Executor:
         if info.trade_mode!=getattr(m,'SYMBOL_TRADE_MODE_FULL',4): return self._failure('Refused open: symbol is not enabled for full trading',volume)
         account=m.account_info()
         if account is None: return self._failure(f'Account info unavailable: {m.last_error()}',volume)
+        if 'demo_risk' in self.settings.config:
+            # Same account-type risk the scanner/bot used; account type comes from MT5, not config.
+            from .risk_profile import applied_risk_pct,is_demo_account
+            mode=str((features or {}).get('trade_mode') or 'main') if isinstance(features,dict) else 'main'
+            risk_pct=applied_risk_pct(self.settings.config,is_demo_account(account,m),mode,features if isinstance(features,dict) else None)
         demo_mode=getattr(m,'ACCOUNT_TRADE_MODE_DEMO',0)
         if exploration_mode and account.trade_mode!=demo_mode:
             return self._failure('Refused open: exploration trades are DEMO only',volume)
@@ -196,6 +219,8 @@ class Executor:
         info=m.symbol_info(p.symbol); price=self._price(info,tick.bid if is_buy else tick.ask) if info else float(tick.bid if is_buy else tick.ask)
         volume=self._volume(info,p.volume) if info else float(p.volume); filling=self._filling_mode(info) if info else None
         if filling is None: return self._failure('Refused close: unsupported filling mode',p.volume,ticket)
+        frozen=self._freeze_reason(p,info,tick) if info else None
+        if frozen: return self._failure(f'Close ticket {ticket} deferred: {frozen}; retrying next cycle',p.volume,ticket)
         req={'action':int(m.TRADE_ACTION_DEAL),'symbol':str(p.symbol),'position':int(p.ticket),'volume':float(volume),'type':int(order_type),'price':float(price),'deviation':int(self.settings.config['executor']['deviation_points']),'magic':int(self.settings.magic_number),'comment':self._comment(reason),'type_time':int(m.ORDER_TIME_GTC),'type_filling':int(filling)}
         result=m.order_send(**req)
         if result is None or result.retcode!=m.TRADE_RETCODE_DONE:
@@ -222,6 +247,8 @@ class Executor:
         buy=p.type==m.POSITION_TYPE_BUY; order_type=m.ORDER_TYPE_SELL if buy else m.ORDER_TYPE_BUY; price=self._price(info,tick.bid if buy else tick.ask)
         filling=self._filling_mode(info)
         if filling is None: return self._failure('Refused partial close: unsupported filling mode',volume,int(p.ticket))
+        frozen=self._freeze_reason(p,info,tick)
+        if frozen: return self._failure(f'Partial close ticket {p.ticket} deferred: {frozen}; retrying next cycle',volume,int(p.ticket))
         req={'action':int(m.TRADE_ACTION_DEAL),'symbol':str(p.symbol),'position':int(p.ticket),'volume':float(volume),'type':int(order_type),'price':float(price),'deviation':int(self.settings.config['executor']['deviation_points']),'magic':int(self.settings.magic_number),'comment':self._comment(reason),'type_time':int(m.ORDER_TIME_GTC),'type_filling':int(filling)}
         result=m.order_send(**req)
         if result is None or result.retcode!=m.TRADE_RETCODE_DONE: return self._failure(f'Partial close ticket {p.ticket} failed: {getattr(result,"comment",m.last_error())}',volume,int(p.ticket),getattr(result,'retcode',None))
@@ -244,6 +271,12 @@ class Executor:
         tick=self.mt5.symbol_info_tick(p.symbol)
         if tick is None or (is_buy and float(sl)>=float(tick.bid)) or (not is_buy and float(sl)<=float(tick.ask)):
             self._event(f'Refused SL/TP modification: ticket={ticket} stop is not on the protective side of the market','WARNING'); return False
+        frozen=self._freeze_reason(p,info,tick)
+        if frozen:
+            self._event(f'SL/TP modification ticket={ticket} deferred: {frozen}; retrying next cycle','WARNING'); return False
+        stops=self._level_distance(info,'trade_stops_level'); market=float(tick.bid if is_buy else tick.ask)
+        if stops>0 and (abs(market-float(sl))<stops or abs(float(tp)-market)<stops):
+            self._event(f'Refused SL/TP modification: ticket={ticket} new SL/TP is inside broker trade_stops_level {stops}','WARNING'); return False
         req={'action':int(m.TRADE_ACTION_SLTP),'position':int(ticket),'symbol':str(p.symbol),'sl':float(sl),'tp':float(tp),'magic':int(self.settings.magic_number)}
         result=m.order_send(**req); ok=bool(result and result.retcode==m.TRADE_RETCODE_DONE)
         if ok:
@@ -435,7 +468,8 @@ class Executor:
         actions=[]
         for position in (self.mt5.positions_get() or []):
             if int(position.magic)!=self.settings.magic_number: continue
-            upcoming=[event for event in events if str(event.importance).upper()=='HIGH' and event_matches_symbol(event,position.symbol) and timedelta(0)<=event.time-now<=timedelta(minutes=15)]
+            before=float(self.settings.config.get('news',{}).get('blackout_minutes_before',15)) if hasattr(self.settings,'config') else 15.0
+            upcoming=[event for event in events if str(event.importance).upper()=='HIGH' and event_matches_symbol(event,position.symbol) and timedelta(0)<=event.time-now<=timedelta(minutes=before)]
             if not upcoming: continue
             event=min(upcoming,key=lambda item:item.time); minutes=(event.time-now).total_seconds()/60
             is_buy=position.type==self.mt5.POSITION_TYPE_BUY

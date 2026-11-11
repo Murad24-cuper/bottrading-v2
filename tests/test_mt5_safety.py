@@ -32,3 +32,23 @@ def test_mt5_call_timeout_marks_connection_unhealthy():
     with pytest.raises(MT5CallTimeoutError,match='slow'):
         proxy.slow()
     assert marked==[('slow',.01)]
+
+
+def test_connect_switches_from_other_terminal_account_to_env_account(monkeypatch):
+    state={'login':999999}
+    module=fake_mt5(0)
+    module.account_info=lambda:SimpleNamespace(trade_mode=0,margin_mode=2,login=state['login'])
+    def login(value,**kwargs): state['login']=value; return True
+    module.login=login
+    monkeypatch.setitem(sys.modules,'MetaTrader5',module)
+    MT5Client(client_settings('demo',False)).connect()
+    assert state['login']==123456
+
+
+def test_connect_refuses_when_terminal_stays_on_another_account(monkeypatch):
+    module=fake_mt5(0)
+    module.account_info=lambda:SimpleNamespace(trade_mode=0,margin_mode=2,login=999999)
+    module.login=lambda *a,**k:False
+    monkeypatch.setitem(sys.modules,'MetaTrader5',module)
+    with pytest.raises(RuntimeError,match='refusing to trade on another account'):
+        MT5Client(client_settings('demo',False)).connect()

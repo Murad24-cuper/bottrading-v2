@@ -23,7 +23,7 @@ This is a single-owner XM trading bot. Python connects to the locally running Me
 
 ## Emergency stop and ownership
 
-Create an empty file named `STOP` in this project folder to block new entries while the bot continues managing its positions. The dashboard Pause button creates this file through an expiring command; Resume removes it. The dashboard Stop bot command exits cleanly and leaves broker SL/TP in place. Close all & stop requires confirmation and closes only positions with this bot's `magic_number`. Every close or stop modification checks ownership. Netting accounts are detected and a new order is refused if that symbol already has a position.
+Create an empty file named `STOP` (or run `pause_bot.bat` / `./pause_bot.sh`) to block new entries while the bot continues managing its positions. A `STOP` file containing `HALT` (written by `stop_bot.bat` / `./stop_bot.sh`) stops the bot completely and is never removed by automatic start; use `start_bot.bat force` to resume. See [docs/UNIVERSAL.md](docs/UNIVERSAL.md) for Windows and Linux commands. The dashboard Pause button creates this file through an expiring command; Resume removes it. The dashboard Stop bot command exits cleanly and leaves broker SL/TP in place. Close all & stop requires confirmation and closes only positions with this bot's `magic_number`. Every close or stop modification checks ownership. Netting accounts are detected and a new order is refused if that symbol already has a position.
 
 ## Risk settings in `config.yaml`
 

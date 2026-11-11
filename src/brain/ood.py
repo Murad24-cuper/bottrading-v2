@@ -44,3 +44,42 @@ def is_out_of_distribution(vector,training_vectors,guard):
         return True
     nearest=min(_distance(query,row) for row in training)
     return nearest>float(guard['threshold'])
+
+
+def fit_ood_guard_fast(training_vectors,validation_vectors,percentile=99.0,max_training=20000,max_validation=2000):
+    """NumPy version of :func:`fit_ood_guard` for large memories.
+
+    Evenly spaced deterministic subsamples keep it fast; the cutoff is still set from
+    validation rows only, so it measures how far genuinely unseen situations sit from
+    the training memory."""
+    import numpy as np
+    train=np.asarray(training_vectors,dtype=np.float32); valid=np.asarray(validation_vectors,dtype=np.float32)
+    if train.ndim!=2 or valid.ndim!=2 or not len(train) or not len(valid):
+        raise ValueError('OOD guard requires non-empty 2D train and validation vectors')
+    if train.shape[1]!=valid.shape[1]: raise ValueError('OOD training and validation dimensions do not match')
+    if not (np.isfinite(train).all() and np.isfinite(valid).all()): raise ValueError('OOD vectors must be finite')
+    percentile=float(percentile)
+    if not 0.0<percentile<=100.0: raise ValueError('percentile must be in (0, 100]')
+    if len(train)>max_training: train=train[np.linspace(0,len(train)-1,int(max_training),dtype=int)]
+    if len(valid)>max_validation: valid=valid[np.linspace(0,len(valid)-1,int(max_validation),dtype=int)]
+    nearest=np.empty(len(valid),dtype=np.float64)
+    for start in range(0,len(valid),256):
+        block=valid[start:start+256]
+        d2=(block**2).sum(1)[:,None]-2*block@train.T+(train**2).sum(1)[None,:]
+        nearest[start:start+256]=np.sqrt(np.maximum(d2.min(1),0.0))
+    threshold=float(np.percentile(nearest,percentile,method='higher'))
+    return {'threshold':threshold,'percentile':percentile,'dimension':int(train.shape[1]),
+            'training_count':int(len(train)),'validation_count':int(len(valid)),
+            'method':'nearest_train_euclidean_validation_percentile'}
+
+
+def distance_is_out_of_distribution(nearest_distance,guard):
+    """Classify a query from its nearest-neighbour distance.
+
+    Returns True/False, or None when no guard is available (unknown)."""
+    if not guard: return None
+    if nearest_distance is None: return True
+    try: value=float(nearest_distance); threshold=float(guard['threshold'])
+    except (KeyError,TypeError,ValueError): return None
+    if not math.isfinite(value): return True
+    return value>threshold

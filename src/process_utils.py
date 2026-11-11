@@ -101,24 +101,38 @@ def is_process_named_running(names: tuple[str, ...] | list[str] | set[str]) -> b
 
 
 class SingleInstanceLock:
-    """Robust OS-level mutex on Windows combined with safe file locking to prevent duplicate runs."""
+    """OS-level single-instance lock: a named mutex on Windows (also under Wine)
+    and an ``flock`` on POSIX. Both are released by the OS if the process dies,
+    so no stale lock can block a restart."""
     def __init__(self, name: str, lock_file_path=None):
         import hashlib
         from pathlib import Path
         self.lock_file_path = lock_file_path
         norm_path = str(Path(lock_file_path).resolve()).lower() if lock_file_path else str(name).lower()
         path_hash = hashlib.sha256(norm_path.encode('utf-8')).hexdigest()[:16]
-        self.name = f"{str(name).replace('\\', '_').replace('/', '_')}_{path_hash}"
+        safe_name = str(name).replace('\\', '_').replace('/', '_')
+        self.name = f"{safe_name}_{path_hash}"
         self._mutex_handle = None
+        self._fd = None
         self.held = False
 
+    def _posix_lock_path(self):
+        from pathlib import Path
+        if self.lock_file_path:
+            return Path(self.lock_file_path)
+        import tempfile
+        return Path(tempfile.gettempdir()) / f"TradingBotLock_{self.name}.lock"
+
     def acquire(self) -> bool:
+        if self.held:
+            return True
         if os.name == 'nt':
             import ctypes
             from ctypes import wintypes
             kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
             kernel32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
             kernel32.CreateMutexW.restype = wintypes.HANDLE
+            kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
             # Local namespace restricts to current desktop session; path hash isolates per directory
             mutex_name = f"Local\\TradingBotLock_{self.name}"
             handle = kernel32.CreateMutexW(None, True, mutex_name)
@@ -129,14 +143,30 @@ class SingleInstanceLock:
                 kernel32.CloseHandle(handle)
                 return False
             self._mutex_handle = handle
-        if self.lock_file_path:
+            if self.lock_file_path:
+                try:
+                    from pathlib import Path
+                    p = Path(self.lock_file_path)
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    p.write_text(f"{os.getpid()}\n", encoding='utf-8')
+                except OSError:
+                    pass
+        else:
+            import fcntl
+            path = self._posix_lock_path()
             try:
-                from pathlib import Path
-                p = Path(self.lock_file_path)
-                p.parent.mkdir(parents=True, exist_ok=True)
-                p.write_text(f"{os.getpid()}\n", encoding='utf-8')
+                path.parent.mkdir(parents=True, exist_ok=True)
+                fd = os.open(str(path), os.O_RDWR | os.O_CREAT, 0o644)
             except OSError:
-                pass
+                return False
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                os.close(fd)
+                return False
+            os.ftruncate(fd, 0)
+            os.write(fd, f"{os.getpid()}\n".encode('utf-8'))
+            self._fd = fd
         self.held = True
         return True
 
@@ -148,7 +178,21 @@ class SingleInstanceLock:
             kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
             kernel32.CloseHandle(self._mutex_handle)
             self._mutex_handle = None
-        if self.lock_file_path:
+        if self._fd is not None:
+            try:
+                path = self._posix_lock_path()
+                try:
+                    if path.read_text(encoding='utf-8').strip() == str(os.getpid()):
+                        path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            finally:
+                import fcntl
+                try: fcntl.flock(self._fd, fcntl.LOCK_UN)
+                finally:
+                    os.close(self._fd)
+                    self._fd = None
+        elif self.lock_file_path:
             try:
                 from pathlib import Path
                 p = Path(self.lock_file_path)

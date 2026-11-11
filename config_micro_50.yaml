@@ -12,7 +12,7 @@ risk:
   max_total_open_risk_pct: 3.0
   symbol_cooldown_minutes: 20
   max_trades_per_symbol_per_day: 4
-  max_group_share_today: 0.4
+  max_group_share_today: 0  # 0 = off
   max_margin_usage_pct: 50
   max_hold_minutes: 20
   max_hold_extended_minutes: 60

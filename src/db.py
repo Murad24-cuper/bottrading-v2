@@ -120,6 +120,31 @@ CREATE TABLE IF NOT EXISTS adaptive_gates(
 CREATE TABLE IF NOT EXISTS weekend_control(id INTEGER PRIMARY KEY CHECK(id=1),disabled_until TEXT,expectancy REAL,sample_size INTEGER,updated_at TEXT);
 '''
 
+def backup_database(source,folder,keep_days=7,today=None):
+    """Consistent copy of the SQLite database (online backup API), one file per UTC day.
+
+    Returns the backup path, or None when today's backup already exists. Backups older
+    than keep_days are removed."""
+    from datetime import date
+    source=Path(source); folder=Path(folder); folder.mkdir(parents=True,exist_ok=True)
+    day=(today or datetime.now(timezone.utc).date()).isoformat()
+    target=folder/f'{source.stem}-{day}.db'
+    if target.exists(): return None
+    tmp=target.with_suffix('.tmp')
+    # Close both connections before renaming: Windows refuses to move a file that is still open.
+    src=sqlite3.connect(source,timeout=10)
+    try:
+        dst=sqlite3.connect(tmp)
+        try: src.backup(dst)
+        finally: dst.close()
+    finally: src.close()
+    tmp.replace(target)
+    for old in sorted(folder.glob(f'{source.stem}-*.db'))[:-max(1,int(keep_days))]:
+        try: old.unlink()
+        except OSError: pass
+    return target
+
+
 class Database:
     def __init__(self,path='data/bot.db'):
         self.path=Path(path); self.path.parent.mkdir(parents=True,exist_ok=True); self.init()
@@ -144,6 +169,8 @@ class Database:
                 if name not in status_columns: connection.execute(f'ALTER TABLE bot_status ADD COLUMN {name} {sql_type}')
             columns={row['name'] for row in connection.execute('PRAGMA table_info(signals)')}
             if 'score' not in columns: connection.execute('ALTER TABLE signals ADD COLUMN score REAL DEFAULT 0')
+            snapshot_columns={row['name'] for row in connection.execute('PRAGMA table_info(equity_snapshots)')}
+            if 'login' not in snapshot_columns: connection.execute('ALTER TABLE equity_snapshots ADD COLUMN login INTEGER')
             if 'features' not in columns: connection.execute("ALTER TABLE signals ADD COLUMN features TEXT NOT NULL DEFAULT '{}'")
             command_columns={row['name'] for row in connection.execute('PRAGMA table_info(commands)')}
             if 'created_at' not in command_columns: connection.execute('ALTER TABLE commands ADD COLUMN created_at TEXT')
@@ -314,6 +341,20 @@ class Database:
     def get_closed_trades_after_id(self,last_id):
         with self.connect() as connection:
             return [dict(row) for row in connection.execute("SELECT id,ticket,symbol,direction,strategy,profit,commission,swap,close_reason FROM trades WHERE status='closed' AND id>? ORDER BY id",(int(last_id),))]
+    def consecutive_losses(self,magic=None,limit=20):
+        """Count the latest closed bot trades that lost money, newest first, until a win."""
+        query="SELECT ticket,COALESCE(profit,0)+COALESCE(commission,0)+COALESCE(swap,0) net FROM trades WHERE status='closed'"
+        params=[]
+        if magic is not None: query+=' AND magic=?'; params.append(int(magic))
+        query+=' ORDER BY close_time DESC LIMIT ?'; params.append(max(1,int(limit)))
+        with self.connect() as connection:
+            rows=[dict(row) for row in connection.execute(query,params)]
+            partial={int(row['ticket']):float(row['pnl'] or 0) for row in connection.execute('SELECT ticket,SUM(COALESCE(profit,0)+COALESCE(commission,0)+COALESCE(swap,0)) pnl FROM partial_closes GROUP BY ticket')}
+        count=0
+        for row in rows:
+            if float(row['net'] or 0)+partial.get(int(row['ticket']),0.0)<0: count+=1
+            else: break
+        return count
     def get_recent_brain_outcomes(self,limit=100,magic=None):
         import json
         query="SELECT ticket,profit,commission,swap,features FROM trades WHERE status='closed' AND mode='main' AND features IS NOT NULL"
@@ -367,10 +408,13 @@ class Database:
             row['outcome_r']=review.get('outcome_r')
             result.append(row)
         return result
-    def get_equity_snapshots_since(self,since):
+    def get_equity_snapshots_since(self,since,login=None):
+        """Equity snapshots since a time; with login, only that MT5 account's snapshots."""
         stamp=since.isoformat() if hasattr(since,'isoformat') else str(since)
         with self.connect() as connection:
-            return [dict(row) for row in connection.execute('SELECT time,equity FROM equity_snapshots WHERE time>=? ORDER BY time',(stamp,))]
+            if login is None:
+                return [dict(row) for row in connection.execute('SELECT time,equity FROM equity_snapshots WHERE time>=? ORDER BY time',(stamp,))]
+            return [dict(row) for row in connection.execute('SELECT time,equity FROM equity_snapshots WHERE time>=? AND login=? ORDER BY time',(stamp,int(login)))]
     def get_daily_stats(self,day):
         day=day.isoformat() if hasattr(day,'isoformat') else str(day)
         with self.connect() as connection:

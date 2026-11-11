@@ -33,7 +33,7 @@ services:
       TZ: UTC
       STREAMLIT_SERVER_HEADLESS: "true"
     volumes:
-      - /opt/tradingbot:/opt/tradingbot:ro
+      - /opt/tradingbot:/opt/tradingbot
       - /opt/tradingbot/data:/opt/tradingbot/data
       - /opt/tradingbot/logs:/opt/tradingbot/logs
     ports:

@@ -121,6 +121,8 @@ def load_settings(config_path: str | Path='config.yaml', env_path: str | Path='.
     if config['account'].get('mode') not in {'demo','real'}: raise ValueError('account.mode must be demo or real')
     raw=config['risk']
     validate_risk_ceilings(config)
+    from .risk_profile import validate_demo_risk
+    validate_demo_risk(config)
     numeric={'risk_per_trade_pct':(0,100),'daily_loss_limit_pct':(0,100),'weekly_loss_limit_pct':(0,100),'max_margin_usage_pct':(0,100),'min_risk_reward':(0,None),'max_cost_to_target_ratio':(0,None)}
     for key,(low,high) in numeric.items():
         value=raw.get(key)

@@ -1,6 +1,8 @@
 $ErrorActionPreference='Stop'
-$Server='ec2-user@16.192.113.6'
-$Key=Join-Path $env:USERPROFILE 'Downloads\bot.pem'
+# Same settings as scripts/server.ps1 (kept out of git):
+$Server=$env:TRADINGBOT_SERVER
+if (-not $Server) { throw 'Set TRADINGBOT_SERVER first, e.g.: setx TRADINGBOT_SERVER "ec2-user@<server-ip>" (then open a new terminal)' }
+$Key=if ($env:TRADINGBOT_SSH_KEY) { $env:TRADINGBOT_SSH_KEY } else { Join-Path $env:USERPROFILE 'Downloads\bot.pem' }
 if (!(Test-Path $Key)) { throw "SSH key not found: $Key" }
 $python=Join-Path $PSScriptRoot '..\.venv\Scripts\python.exe'
 if (!(Test-Path $python)) { $python=(Get-Command python -ErrorAction Stop).Source }

@@ -148,8 +148,12 @@ def main() -> int:
                    'stdout': output_handle, 'stderr': subprocess.STDOUT, 'close_fds': True}
         try:
             interpreter=detached_python_executable(sys.executable)
-            try: child = subprocess.Popen([interpreter, str(child_script)], creationflags=base_flags | breakaway, **options)
-            except OSError: child = subprocess.Popen([interpreter, str(child_script)], creationflags=base_flags, **options)
+            if os.name=='nt':
+                try: child = subprocess.Popen([interpreter, str(child_script)], creationflags=base_flags | breakaway, **options)
+                except OSError: child = subprocess.Popen([interpreter, str(child_script)], creationflags=base_flags, **options)
+            else:
+                # Native POSIX: creationflags are Windows-only; a new session detaches the child.
+                child = subprocess.Popen([interpreter, str(child_script)], start_new_session=True, **options)
         finally: output_handle.close()
         emit('INFO', f'Bot child started PID={child.pid}')
         hang_seconds=int(backoff['hang_seconds'])

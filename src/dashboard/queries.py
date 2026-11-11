@@ -270,3 +270,13 @@ def enqueue_command(command,path=None,ttl_seconds=60):
 
 def get_recent_commands(path=None,limit=20):
     return _rows(path,'SELECT id,created_at,expires_at,command,status,message,processed_time FROM commands ORDER BY id DESC LIMIT ?',(int(limit),))
+
+def get_pnl_since(start_utc,path=None,magic=None):
+    """Realized P/L of every bot mode (main + exploration) since start, as the bot's loss limits count it."""
+    params=[start_utc]; magic_sql=''
+    if magic is not None: magic_sql=' AND magic=?'; params.append(int(magic))
+    closed=_rows(path,"SELECT COALESCE(SUM(COALESCE(profit,0)+COALESCE(commission,0)+COALESCE(swap,0)),0) AS pnl,COUNT(*) AS trades,COALESCE(SUM(CASE WHEN COALESCE(profit,0)+COALESCE(commission,0)+COALESCE(swap,0)>0 THEN 1 ELSE 0 END),0) AS wins FROM trades WHERE status='closed' AND close_time>=?"+magic_sql,tuple(params))
+    partial=_rows(path,"SELECT COALESCE(SUM(COALESCE(p.profit,0)+COALESCE(p.commission,0)+COALESCE(p.swap,0)),0) AS pnl FROM partial_closes p JOIN trades t ON p.ticket=t.ticket WHERE p.time>=?"+magic_sql.replace('magic','t.magic'),tuple(params))
+    row=closed[0] if closed else {'pnl':0,'trades':0,'wins':0}
+    trades=int(row['trades'] or 0)
+    return {'pnl':float(row['pnl'] or 0)+float((partial[0]['pnl'] if partial else 0) or 0),'trades':trades,'win_rate':(int(row['wins'] or 0)/trades) if trades else 0.0}

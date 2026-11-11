@@ -77,4 +77,4 @@ def query_memory(vector, rows: list[dict], query_time: datetime, symbol: str,
     probability=shrink*float(np.average(wins,weights=weights))+(1-shrink)*base
     win_r=net[net>0]; loss_r=-net[net<0]
     cases=[{'symbol':index['rows'][int(idx)].get('symbol'),'time':str(index['times'][idx])+'Z','distance':float(distance)} for idx,distance in zip(ids[:3],dists[:3])]
-    return {'count':len(ids),'probability':probability,'avg_win_r':float(np.mean(win_r)) if len(win_r) else 0.0,'avg_loss_r':float(np.mean(loss_r)) if len(loss_r) else 0.0,'cases':cases,'mean_distance':float(np.mean(dists))}
+    return {'count':len(ids),'probability':probability,'avg_win_r':float(np.mean(win_r)) if len(win_r) else 0.0,'avg_loss_r':float(np.mean(loss_r)) if len(loss_r) else 0.0,'cases':cases,'mean_distance':float(np.mean(dists)),'nearest_distance':float(dists[0])}

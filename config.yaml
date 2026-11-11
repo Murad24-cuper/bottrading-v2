@@ -15,7 +15,7 @@ risk:
   max_total_open_risk_pct: 5.0    # Maximum combined stop risk across bot positions and cycle reservations
   symbol_cooldown_minutes: 20    # Fixed cooldown; never shortened by scanner vacancies
   max_trades_per_symbol_per_day: 4 # Maximum daily opens per underlying (UTC day)
-  max_group_share_today: 0.4     # Group cap after at least 10 daily trades
+  max_group_share_today: 0       # 0 = off (no cap on one asset group's share of today's trades); 0<x<1 caps it after 10 daily trades
   max_margin_usage_pct: 50       # Maximum projected margin / equity
   max_hold_minutes: 20           # Default hard holding limit; protected winners may extend
   max_hold_extended_minutes: 60  # Hard ceiling including protected-profit extensions
@@ -215,6 +215,10 @@ protections:
 dashboard:
   real_balance_default: 100      # Starting value for the small-account simulation
   real_risk_pct_default: 1.0     # Planned risk percent used in that simulation
+  chart_refresh_seconds: 15      # Bot writes open-position price charts for the dashboard (0 = off)
+backup:
+  enabled: true                  # Daily copy of data/bot.db to data/backups (trade history, brain outcomes)
+  keep_days: 7
 paths:
   data_dir: data                 # Relative to project root unless overridden in .env
   logs_dir: logs                 # Relative to project root unless overridden in .env
@@ -253,15 +257,26 @@ brain:
     weights: {trend: 1.0, location: 1.0, pattern: 1.0, candle: 1.0, fibonacci: 0.7, levels: 1.0, momentum: 1.0, volatility: 0.8, session: 0.5, context: 0.5}
   acceptance: {min_trades: 500, min_profit_factor: 1.1, min_symbols: 7, calibration_error: 0.05}
   universe_quotas: {forex: 5, indices: 4, stocks: 0, crypto: 2, metals: 2, energy: 0}
-  kelly_fraction: 0.25
   pca_components: 28
   max_reference_memory_mb: 800
-  max_reference_situations: 1500000
+  ood_percentile: 99.0            # Validation distance percentile; farther live situations are "unfamiliar"
+  loss_streak_base_risk: 3        # After this many consecutive losses, brain sizing falls back to base risk
+  real_risk:                      # Brain dynamic risk bounds on a REAL account (never above locked 0.25%)
+    brain_min_risk_pct: 0.1
+    brain_max_risk_pct: 0.25
   purge_gap_minutes: 20
   sample_every_minutes: 30
   rounds: 5
   weekend_memory_file: weekend_reference.parquet
   retrain_day_utc: 6
+demo_risk:                        # Used ONLY when MT5 reports a DEMO account (virtual money)
+  risk_per_trade_pct: 1.0         # Fixed risk per trade: 1% = $100 on $10,000 (all modes: main, weekend, exploration)
+  daily_loss_limit_pct: 10.0      # Stop new entries after -10% in a UTC day
+  weekly_loss_limit_pct: 25.0     # Stop new entries after -25% in a week
+  brain_min_risk_pct: 1.0         # Brain dynamic risk range once it is live (gate PASS)
+  brain_max_risk_pct: 2.0         # Hard DEMO ceiling is 2% (src/risk_profile.py)
+  rolling_drawdown_pct: 6.0       # Pause all entries for 24h after a 6% equity drop in 24h (REAL keeps protections.rolling_drawdown_pct 2%); ceiling 10%
+  min_lot_max_risk_pct: 3.0       # Small balance: if 1% is below the broker minimum lot, trade the minimum lot when it risks <=3% (hard ceiling 5%; REAL never)
 self_learning:
   bandit_enabled: true       # Thompson sampling changes scan priority only; risk settings remain locked
   bandit_history_trades: 1000 # Recent closed main-mode outcomes used per weekly scan priority update

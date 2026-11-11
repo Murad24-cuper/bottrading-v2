@@ -74,3 +74,30 @@ def test_calendar_uses_blanket_fallback_only_when_both_sources_fail(tmp_path):
     events,updated,source,age=load_calendar(None,tmp_path/'missing.json',now,fetch=lambda: (_ for _ in ()).throw(OSError('offline')))
     assert events==[] and updated is None and source=='fallback window'
     assert entry_block_reason('US30Cash',now,events,updated,24)
+
+
+def test_cross_pairs_and_all_majors_are_matched():
+    from datetime import datetime, timezone
+    from src.news import CalendarEvent, event_matches_symbol, symbol_currencies
+    assert symbol_currencies('EURJPY#') == {'EUR', 'JPY'}
+    assert symbol_currencies('GBPJPYmicro') == {'GBP', 'JPY'}
+    assert symbol_currencies('USDCHF') == {'USD', 'CHF'} and symbol_currencies('NZDUSD#') == {'NZD', 'USD'}
+    assert symbol_currencies('SILVER') == {'USD'} and symbol_currencies('GOLD#') == {'USD'}
+    assert symbol_currencies('GER40Cash') == {'EUR'} and symbol_currencies('UK100Cash') == {'GBP'}
+    assert symbol_currencies('BTCUSD') == set()
+    now = datetime(2026, 11, 11, 13, 30, tzinfo=timezone.utc)
+    assert event_matches_symbol(CalendarEvent(now, 'JPY', 'HIGH', 'BoJ'), 'EURJPY#')
+    assert not event_matches_symbol(CalendarEvent(now, 'CHF', 'HIGH', 'SNB'), 'EURJPY#')
+
+
+def test_blackout_minutes_come_from_config():
+    from datetime import datetime, timedelta, timezone
+    from src.news import CalendarEvent, entry_block_reason
+    event_time = datetime(2026, 11, 11, 13, 30, tzinfo=timezone.utc)
+    events = [CalendarEvent(event_time, 'USD', 'HIGH', 'CPI')]
+    early = event_time - timedelta(minutes=25)
+    assert entry_block_reason('EURUSD', early, events, early) == ''
+    assert 'CPI' in entry_block_reason('EURUSD', early, events, early, minutes_before=30)
+    late = event_time + timedelta(minutes=20)
+    assert entry_block_reason('EURUSD', late, events, late, minutes_after=10) == ''
+    assert 'CPI' in entry_block_reason('EURUSD', late, events, late, minutes_after=30)

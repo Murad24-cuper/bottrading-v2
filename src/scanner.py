@@ -102,6 +102,23 @@ class MarketScanner:
                 payload=json.loads(pca_path.read_text(encoding='utf-8'))
                 self._brain_pca={'mean':__import__('numpy').asarray(payload['mean'],dtype='float32'),'components':__import__('numpy').asarray(payload['components'],dtype='float32')}
             except Exception as exc: self.db.log_event('WARNING','brain',f'PCA transform unavailable; reference memory disabled: {type(exc).__name__}')
+        self._brain_ood_guard=None
+        guard_path=(getattr(self.settings,'data_dir',self.settings.root/'data')/'brain'/'ood_guard.json')
+        if guard_path.is_file():
+            try:
+                guard=json.loads(guard_path.read_text(encoding='utf-8'))
+                float(guard['threshold']); self._brain_ood_guard=guard
+            except Exception as exc: self.db.log_event('WARNING','brain',f'OOD guard unavailable; brain cannot size live risk: {type(exc).__name__}')
+        self._brain_live_cache=(0.0,None)
+    def _brain_live(self):
+        """Live/shadow status of the brain, re-read at most once a minute."""
+        import time
+        checked,status=self._brain_live_cache
+        if status is None or time.monotonic()-checked>=60:
+            from .brain.live import live_status
+            status=live_status(self.settings.config.get('brain',{}),getattr(self.settings,'data_dir',self.settings.root/'data'))
+            self._brain_live_cache=(time.monotonic(),status)
+        return status
     def _load_news_calendar(self,now):
         """Refresh the local terminal calendar cache at most once a minute."""
         import time
@@ -337,7 +354,8 @@ class MarketScanner:
                 news_cfg=self.settings.config.get('news',{})
                 if news_cfg.get('enabled',False):
                     from .news import entry_block_reason
-                    news_reason=entry_block_reason(symbol,datetime.now(timezone.utc),self._news_events,self._news_updated,float(news_cfg.get('stale_after_hours',2)))
+                    news_reason=entry_block_reason(symbol,datetime.now(timezone.utc),self._news_events,self._news_updated,float(news_cfg.get('stale_after_hours',2)),
+                                                   float(news_cfg.get('blackout_minutes_before',15)),float(news_cfg.get('blackout_minutes_after',15)))
                     if news_reason:
                         reason=f'news filter: {news_reason}'
                         self._write_signal(signal,0,reason)
@@ -362,7 +380,11 @@ class MarketScanner:
                     from .brain.memory import apply_pca
                     query_vector=apply_pca(query_vector,self._brain_pca)[0]
                 brain_memory=query_memory(query_vector,brain_rows,datetime.now(timezone.utc),symbol,int(brain_cfg.get('k_neighbors',300)),int(brain_cfg.get('query_exclude_same_symbol_days',1))) if brain_rows else {'count':0,'probability':None,'avg_win_r':0.0,'avg_loss_r':0.0,'cases':[],'mean_distance':None}
-                feature_snapshot['brain']={'checklist':brain_checklist,'memory':brain_memory,'decision':decide_brain(brain_checklist,brain_memory,brain_cfg),'suggested_risk_pct':0.0,'mode':'shadow' if brain_cfg.get('shadow',True) else 'disabled'}
+                from .brain.ood import distance_is_out_of_distribution
+                brain_memory['out_of_distribution']=distance_is_out_of_distribution(brain_memory.get('nearest_distance'),self._brain_ood_guard)
+                brain_live=self._brain_live()
+                brain_mode='live' if brain_live['active'] else ('shadow' if brain_cfg.get('shadow',True) or not brain_cfg.get('enabled',False) else 'disabled')
+                feature_snapshot['brain']={'checklist':brain_checklist,'memory':brain_memory,'decision':decide_brain(brain_checklist,brain_memory,brain_cfg),'suggested_risk_pct':0.0,'mode':brain_mode,'live_reasons':brain_live['reasons']}
                 exploration_cfg=self.settings.config.get('demo_exploration',{})
                 demo_mode=getattr(account,'trade_mode',None)==getattr(self.mt5,'ACCOUNT_TRADE_MODE_DEMO',0)
                 exploration_enabled=bool(exploration_cfg.get('enabled',False) and demo_mode)
@@ -416,8 +438,24 @@ class MarketScanner:
                     self._write_signal(signal,0,'invalid stop/target side',features=feature_snapshot); continue
                 if signal.direction=='sell' and not signal.tp_price<signal.entry_hint<signal.sl_price:
                     self._write_signal(signal,0,'invalid stop/target side',features=feature_snapshot); continue
-                risk_pct=float(exploration_cfg.get('risk_per_trade_pct',0.1)) if exploration_enabled else (min(self.settings.risk.risk_per_trade_pct,float(self.settings.config.get('weekend',{}).get('risk_per_trade_pct',self.settings.risk.risk_per_trade_pct))) if weekend else self.settings.risk.risk_per_trade_pct)
+                if 'demo_risk' in self.settings.config:
+                    from .risk_profile import base_risk_pct
+                    scan_mode=('weekend_exploration' if weekend else 'exploration') if exploration_enabled else ('weekend' if weekend else 'main')
+                    risk_pct=base_risk_pct(self.settings.config,bool(demo_mode),scan_mode)
+                else:
+                    risk_pct=float(exploration_cfg.get('risk_per_trade_pct',0.1)) if exploration_enabled else (min(self.settings.risk.risk_per_trade_pct,float(self.settings.config.get('weekend',{}).get('risk_per_trade_pct',self.settings.risk.risk_per_trade_pct))) if weekend else self.settings.risk.risk_per_trade_pct)
                 volume,volume_reason=calc_volume(account.equity,risk_pct,signal.entry_hint,signal.sl_price,spec)
+                if volume<=0 and volume_reason=='min lot exceeds risk' and 'demo_risk' in self.settings.config:
+                    # Small balance: trade the broker minimum lot if it stays under the small-account cap.
+                    from .risk import min_lot_risk_money
+                    from .risk_profile import min_lot_cap_pct
+                    cap=min_lot_cap_pct(self.settings.config,bool(demo_mode)); needed=min_lot_risk_money(signal.entry_hint,signal.sl_price,spec)
+                    needed_pct=needed/float(account.equity)*100 if needed and float(account.equity)>0 else None
+                    if cap>0 and needed_pct is not None and needed_pct<=cap:
+                        volume=float(spec.get('volume_min')); volume_reason='ok'
+                        feature_snapshot['min_lot']={'active':True,'needed_pct':needed_pct,'cap_pct':cap}
+                    elif needed_pct is not None:
+                        volume_reason=f'min lot risks {needed_pct:.2f}% of equity (limit {cap:g}%)'
                 if volume<=0:
                     self._write_signal(signal,0,volume_reason,features=feature_snapshot); continue
                 cost=market_data.get_cost_estimate(self.mt5,symbol,volume)
@@ -457,8 +495,33 @@ class MarketScanner:
                 from .brain.sizing import fractional_kelly_risk_pct
                 feature_snapshot['brain']['decision']=decide_brain(brain_checklist,brain_memory,brain_cfg,float(cost.get('cost',0))/max(risk_money,1e-12))
                 feature_snapshot['brain']['suggested_risk_pct']=fractional_kelly_risk_pct(float(brain_memory['probability']),float(brain_memory['avg_win_r']),float(brain_cfg.get('kelly_fraction',.25))) if brain_memory['probability'] is not None else 0.0
+                brain_block_reason=''
+                if brain_live['active']:
+                    brain_decision=feature_snapshot['brain']['decision']
+                    if not brain_decision.get('accepted'):
+                        # Live brain may only block: it vetoes signals it rejects.
+                        brain_block_reason='brain filter: '+'; '.join(brain_decision.get('reasons') or ['rejected'])
+                    elif 'demo_risk' in self.settings.config:
+                        from .brain.live import dynamic_risk
+                        from .risk_profile import account_risk_profile
+                        profile=account_risk_profile(self.settings.config,bool(demo_mode))
+                        losses=self.db.consecutive_losses(self.settings.magic_number) if hasattr(self.db,'consecutive_losses') else 0
+                        sizing=dynamic_risk(brain_memory,brain_decision,float(brain_cfg.get('kelly_fraction',.25)),float(profile['brain_min_risk_pct']),float(profile['brain_max_risk_pct']),losses,int(brain_cfg.get('loss_streak_base_risk',3)))
+                        feature_snapshot['brain']['sizing']=sizing
+                        if sizing['active'] and abs(float(sizing['risk_pct'])-risk_pct)>1e-9:
+                            brain_volume,brain_volume_reason=calc_volume(account.equity,float(sizing['risk_pct']),signal.entry_hint,signal.sl_price,spec)
+                            if brain_volume>0:
+                                risk_pct=float(sizing['risk_pct']); volume=brain_volume
+                                cost=market_data.get_cost_estimate(self.mt5,symbol,volume)
+                                risk_money=market_data.price_distance_to_money(self.mt5,symbol,abs(signal.entry_hint-signal.sl_price),volume)
+                                reward_money=market_data.price_distance_to_money(self.mt5,symbol,abs(signal.tp_price-signal.entry_hint),volume)
+                                feature_snapshot['brain']['risk_money']=risk_money
+                            else:
+                                sizing.update({'active':False,'reason':f'brain risk volume unavailable: {brain_volume_reason}'})
+                        feature_snapshot['brain']['applied_risk_pct']=risk_pct
+                        self.db.log_event('INFO','brain',f"{symbol} {signal.direction}: risk {risk_pct:.3f}% ({sizing['reason']})")
                 score=expected_value_score(signal.confidence,reward_money,risk_money,cost['cost'])
-                reason=cost_gate_reason or ('expected value is non-positive' if score<=0 else ('below scanner.min_score' if score<float(cfg['min_score']) else ''))
+                reason=cost_gate_reason or brain_block_reason or ('expected value is non-positive' if score<=0 else ('below scanner.min_score' if score<float(cfg['min_score']) else ''))
                 candidate=Candidate(symbol,group,strategy.name,signal,signal.confidence,volume,risk_money,reward_money,cost,score,feature_snapshot,spec,reason)
                 candidate.signal_row_id=self._write_signal(signal,cost['cost'],reason,score,feature_snapshot); results.append(candidate)
         self.last_strategy_diagnostics={name:dict(counts) for name,counts in strategy_diagnostics.items()}

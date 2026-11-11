@@ -1,0 +1,1019 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.2.0, pluggy-1.7.0 -- C:\Users\Murad\Desktop\tradingbot\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Murad\Desktop\tradingbot
+plugins: anyio-4.16.0
+collecting ... collected 493 items
+
+tests/patterns/test_candles.py::test_candle_detector_emits_names_direction_and_timeframe PASSED [  0%]
+tests/patterns/test_candles.py::test_candle_detector_ignores_forming_bar PASSED [  0%]
+tests/patterns/test_candles.py::test_candle_detector_finds_inside_outside_and_star_patterns PASSED [  0%]
+tests/patterns/test_chart.py::test_chart_patterns_report_atr_distance_and_state PASSED [  0%]
+tests/patterns/test_chart.py::test_chart_detector_ignores_forming_last_bar PASSED [  1%]
+tests/patterns/test_chart.py::test_each_converging_boundary_pattern_has_a_direction PASSED [  1%]
+tests/patterns/test_chart.py::test_flag_and_pennant_continuation_classification PASSED [  1%]
+tests/patterns/test_fibonacci.py::test_fibonacci_returns_all_levels_and_atr_distance PASSED [  1%]
+tests/patterns/test_fibonacci.py::test_fibonacci_ignores_forming_bar PASSED [  1%]
+tests/patterns/test_fibonacci.py::test_fibonacci_reaction_identifies_the_level_touched_by_rejection PASSED [  2%]
+tests/test_adaptive_gates.py::test_adaptive_gates_require_window_and_report_strategy_and_group PASSED [  2%]
+tests/test_adaptive_gates.py::test_adaptive_gate_uses_partial_close_net_profit_and_expires PASSED [  2%]
+tests/test_audit_crit01.py::test_remediate_missing_sl_sets_planned_sl_and_retries PASSED [  2%]
+tests/test_audit_crit01.py::test_remediate_missing_sl_closes_at_market_if_all_retries_fail PASSED [  2%]
+tests/test_audit_crit02.py::test_single_worker_thread_used_for_all_calls PASSED [  3%]
+tests/test_audit_crit02.py::test_timed_out_call_marks_unhealthy_and_rejects_further_calls PASSED [  3%]
+tests/test_audit_crit03.py::test_fresh_account_zero_commission_passes_cost_gate PASSED [  3%]
+tests/test_audit_crit03.py::test_zero_commission_in_deal_history_is_recognized PASSED [  3%]
+tests/test_audit_crit03.py::test_scanner_passes_cost_gate_on_fresh_account PASSED [  3%]
+tests/test_audit_crit04.py::test_requote_recalculates_volume_to_stay_under_risk_cap PASSED [  4%]
+tests/test_audit_crit04.py::test_requote_cancels_if_safe_volume_below_min_lot PASSED [  4%]
+tests/test_audit_crit05.py::test_partial_fill_stores_actual_filled_volume PASSED [  4%]
+tests/test_audit_crit05.py::test_sync_positions_closes_stale_db_records_when_mt5_has_no_position PASSED [  4%]
+tests/test_audit_high01.py::test_demo_exploration_risk_per_trade_cannot_exceed_ceiling PASSED [  4%]
+tests/test_audit_high01.py::test_weekend_max_open_positions_cannot_exceed_ceiling PASSED [  5%]
+tests/test_audit_high01.py::test_valid_demo_and_weekend_pass_validation PASSED [  5%]
+tests/test_audit_high02.py::test_trailed_stop_in_profit_does_not_count_as_open_risk PASSED [  5%]
+tests/test_audit_high03.py::test_default_purge_minutes_covers_extended_hold_horizon PASSED [  5%]
+tests/test_audit_high03.py::test_labels_within_hold_horizon_are_purged PASSED [  5%]
+tests/test_audit_high04.py::test_parquet_fallback_preserves_dataframe_structure PASSED [  6%]
+tests/test_audit_high05.py::test_get_pnl_since_filters_by_magic PASSED   [  6%]
+tests/test_audit_high05.py::test_bot_pnl_periods_uses_magic_number PASSED [  6%]
+tests/test_audit_low01.py::test_retry_delays_tuple_has_multiple_entries PASSED [  6%]
+tests/test_audit_low01.py::test_retry_all_fail_raises_after_all_retries PASSED [  6%]
+tests/test_audit_low01.py::test_retry_succeeds_on_third_attempt PASSED   [  7%]
+tests/test_audit_low01.py::test_retry_non_lock_error_raises_immediately PASSED [  7%]
+tests/test_audit_low01.py::test_executemany_also_retries PASSED          [  7%]
+tests/test_audit_low01.py::test_real_db_lock_retries PASSED              [  7%]
+tests/test_audit_low02.py::test_TradeRequest_only_defined_not_used PASSED [  7%]
+tests/test_audit_low02.py::test_DummyStrategy_only_defined_not_used PASSED [  8%]
+tests/test_audit_low02.py::test_models_Position_not_imported_anywhere PASSED [  8%]
+tests/test_audit_med02.py::test_download_calendar_refuses_non_https PASSED [  8%]
+tests/test_audit_med02.py::test_parse_ff_xml_safe_from_xxe PASSED        [  8%]
+tests/test_audit_med03.py::test_fibonacci_retracement_does_not_crash_when_atr_is_zero PASSED [  8%]
+tests/test_audit_med04.py::test_sql_injection_in_columns_rejected PASSED [  9%]
+tests/test_audit_med04.py::test_sql_injection_in_update_rejected PASSED  [  9%]
+tests/test_audit_med04.py::test_invalid_table_rejected PASSED            [  9%]
+tests/test_audit_med05.py::test_detect_server_utc_offset_uses_fallback_or_cache_on_weekend PASSED [  9%]
+tests/test_audit_med05.py::test_detect_server_utc_offset_remembers_last_known_offset PASSED [  9%]
+tests/test_audit_med06.py::test_write_hang_report_accepts_child_pid_and_requests_traceback PASSED [ 10%]
+tests/test_backtest.py::test_next_bar_buy_fills_at_ask_and_both_hits_use_sl_first PASSED [ 10%]
+tests/test_backtest.py::test_time_stop_closes_at_max_hold PASSED         [ 10%]
+tests/test_backtest.py::test_default_twenty_minute_horizon_closes_unprotected_trade PASSED [ 10%]
+tests/test_backtest.py::test_ten_dollar_equity_skips_trade_when_min_lot_exceeds_risk PASSED [ 10%]
+tests/test_backtest.py::test_scale_out_records_partial_take_profit PASSED [ 11%]
+tests/test_backtest.py::test_future_bar_changes_cannot_change_earlier_signal_fill PASSED [ 11%]
+tests/test_backtest_report.py::test_report_saves_summary_csv_and_equity_plot PASSED [ 11%]
+tests/test_backtest_report.py::test_walk_forward_caps_each_grid_to_twenty_combinations PASSED [ 11%]
+tests/test_backtest_report.py::test_report_metrics_include_trade_sharpe_sortino_and_calmar PASSED [ 11%]
+tests/test_backtest_report.py::test_monte_carlo_bootstrap_is_reproducible_and_reports_ruin PASSED [ 12%]
+tests/test_bot.py::test_shadow_cycle_logs_skip_and_never_opens PASSED    [ 12%]
+tests/test_bot.py::test_fresh_markets_without_candidates_are_not_logged_as_closed PASSED [ 12%]
+tests/test_bot.py::test_trade_mode_opens_only_live_allowlisted_strategy PASSED [ 12%]
+tests/test_bot.py::test_demo_exploration_candidate_is_sized_and_tagged_separately PASSED [ 12%]
+tests/test_bot.py::test_case_b_disables_normal_strategy_entries_even_when_allowlisted PASSED [ 13%]
+tests/test_bot.py::test_exploration_can_collect_demo_data_through_adaptive_strategy_gate PASSED [ 13%]
+tests/test_bot.py::test_exploration_still_obeys_daily_loss_limit PASSED  [ 13%]
+tests/test_bot.py::test_stop_blocks_entries_and_halt_exits_cleanly PASSED [ 13%]
+tests/test_bot.py::test_consecutive_errors_disable_new_entries PASSED    [ 13%]
+tests/test_bot.py::test_daily_stats_roll_over_at_utc_midnight PASSED     [ 14%]
+tests/test_bot.py::test_command_close_all_is_processed_and_marked_done PASSED [ 14%]
+tests/test_bot.py::test_commands_created_before_bot_start_are_expired PASSED [ 14%]
+tests/test_bot.py::test_expired_command_is_ignored_and_marked_expired PASSED [ 14%]
+tests/test_bot.py::test_pause_and_resume_commands_manage_stop_file PASSED [ 15%]
+tests/test_bot.py::test_stop_command_exits_after_management_before_scanning PASSED [ 15%]
+tests/test_bot.py::test_close_all_stop_closes_then_exits PASSED          [ 15%]
+tests/test_bot.py::test_run_forever_records_exit_reason PASSED           [ 15%]
+tests/test_bot.py::test_weekly_learning_summary_is_sent_and_idempotent PASSED [ 15%]
+tests/test_bot.py::test_cycle_reservations_enforce_max_open_when_terminal_positions_lag PASSED [ 16%]
+tests/test_bot.py::test_cycle_reservations_enforce_global_daily_trade_cap PASSED [ 16%]
+tests/test_bot.py::test_cycle_reservations_enforce_total_stop_risk_cap PASSED [ 16%]
+tests/test_bot.py::test_terminal_trade_permission_blocks_new_entries PASSED [ 16%]
+tests/test_bot.py::test_position_without_stop_loss_blocks_entries_and_alerts_once PASSED [ 16%]
+tests/test_bot.py::test_low_margin_level_blocks_new_entries_and_recovers PASSED [ 17%]
+tests/test_bot.py::test_repeated_order_rejections_raise_one_alert PASSED [ 17%]
+tests/test_bot.py::test_three_consecutive_order_rejections_auto_pause_new_entries PASSED [ 17%]
+tests/test_bot.py::test_stale_open_symbol_ticks_block_entries_after_three_reconnect_attempts PASSED [ 17%]
+tests/test_bot.py::test_closed_market_does_not_trigger_stale_tick_reconnect PASSED [ 17%]
+tests/test_bot.py::test_weekly_drawdown_closes_and_stops_bot PASSED      [ 18%]
+tests/test_bot.py::test_run_forever_releases_lock_and_shuts_down_client PASSED [ 18%]
+tests/test_bot.py::test_bot_lock_refuses_second_instance PASSED          [ 18%]
+tests/test_bot.py::test_bot_lock_release_tolerates_external_cleanup PASSED [ 18%]
+tests/test_bot.py::test_weekend_management_uses_configured_horizon_and_extension PASSED [ 18%]
+tests/test_brain_bandit.py::test_bandit_shares_are_bounded_and_sum_to_one PASSED [ 19%]
+tests/test_brain_bandit.py::test_recent_winners_raise_expected_priority_without_touching_risk PASSED [ 19%]
+tests/test_brain_checklist.py::test_checklist_is_weighted_and_blocks_confirmed_opposing_pattern PASSED [ 19%]
+tests/test_brain_data.py::test_universe_selection_applies_group_quotas_and_cost_score PASSED [ 19%]
+tests/test_brain_dataset.py::test_labeled_dataset_is_causal_and_contains_both_directions PASSED [ 19%]
+tests/test_brain_decision.py::test_brain_decision_missing_memory_never_accepts_and_ev_after_costs PASSED [ 20%]
+tests/test_brain_decision.py::test_fractional_kelly_is_zero_for_nonpositive_edge_and_bounded PASSED [ 20%]
+tests/test_brain_drift.py::test_drift_guard_waits_for_full_recent_window PASSED [ 20%]
+tests/test_brain_drift.py::test_drift_guard_triggers_on_calibration_error_or_negative_expectancy PASSED [ 20%]
+tests/test_brain_evaluation.py::test_brain_gate_fails_closed_when_sample_is_too_small PASSED [ 20%]
+tests/test_brain_evaluation.py::test_brain_gate_requires_same_period_current_rule_baseline PASSED [ 21%]
+tests/test_brain_evaluation.py::test_brain_gate_requires_all_test_columns PASSED [ 21%]
+tests/test_brain_memory.py::test_memory_purges_future_rows_and_near_same_symbol PASSED [ 21%]
+tests/test_brain_memory.py::test_pca_uses_training_rows_and_transforms_vectors PASSED [ 21%]
+tests/test_brain_memory.py::test_situation_vector_has_stable_size_from_closed_bar_history PASSED [ 21%]
+tests/test_brain_memory.py::test_prepared_memory_vectorizes_queries_without_future_or_near_symbol_rows PASSED [ 22%]
+tests/test_brain_ood.py::test_ood_threshold_uses_validation_distance_and_abstains_on_far_query PASSED [ 22%]
+tests/test_brain_ood.py::test_brain_decision_abstains_for_out_of_distribution_market PASSED [ 22%]
+tests/test_brain_ood.py::test_ood_guard_rejects_empty_or_dimension_mismatched_inputs PASSED [ 22%]
+tests/test_brain_training.py::test_splits_are_chronological_and_purge_between_periods PASSED [ 22%]
+tests/test_brain_training.py::test_label_trade_uses_next_bar_and_stop_first_when_both_hit PASSED [ 23%]
+tests/test_brain_training.py::test_label_trade_uses_separate_time_barrier_and_commission_cost PASSED [ 23%]
+tests/test_brain_training.py::test_validation_calibration_is_reused_as_bin_lookup PASSED [ 23%]
+tests/test_causality.py::test_indicators_and_brain_features_ignore_bars_after_sample_time PASSED [ 23%]
+tests/test_config.py::test_runtime_location_guard_blocks_wrong_machine PASSED [ 23%]
+tests/test_config.py::test_default_config_loads_for_offline_work PASSED  [ 24%]
+tests/test_config.py::test_locked_risk_ceilings_allow_tightening_but_reject_increases PASSED [ 24%]
+tests/test_config.py::test_config_rejects_zero_risk_percentage PASSED    [ 24%]
+tests/test_confluence.py::test_disabled_confluence_is_a_noop_even_with_rules_configured PASSED [ 24%]
+tests/test_confluence.py::test_optional_confluence_rules PASSED          [ 24%]
+tests/test_costs.py::test_shared_cost_estimate_converts_ticks_commission_and_unknown_flag PASSED [ 25%]
+tests/test_costs.py::test_hourly_cost_map_requires_known_commission_to_pass PASSED [ 25%]
+tests/test_costs.py::test_new_account_zero_samples_uses_live_symbol_info_cost_fallback PASSED [ 25%]
+tests/test_dashboard_app_health.py::test_dashboard_module_and_direct_imports_resolve PASSED [ 25%]
+tests/test_dashboard_app_health.py::test_dashboard_renders_without_streamlit_exception PASSED [ 25%]
+tests/test_dashboard_controls.py::test_stopped_bot_with_fresh_heartbeat_is_not_running PASSED [ 26%]
+tests/test_dashboard_controls.py::test_start_control_launches_detached_supervisor_and_logs_output PASSED [ 26%]
+tests/test_dashboard_controls.py::test_start_control_refuses_a_fresh_heartbeat PASSED [ 26%]
+tests/test_dashboard_controls.py::test_start_control_does_not_remove_lock_when_heartbeat_is_fresh PASSED [ 26%]
+tests/test_dashboard_controls.py::test_start_control_falls_back_when_breakaway_from_job_is_denied PASSED [ 26%]
+tests/test_dashboard_overview.py::test_demo_risk_overview_matches_bot_profile PASSED [ 27%]
+tests/test_dashboard_overview.py::test_real_and_unknown_accounts_use_real_limits PASSED [ 27%]
+tests/test_dashboard_overview.py::test_profit_never_counts_as_used_limit PASSED [ 27%]
+tests/test_dashboard_overview.py::test_runtime_label_warns_when_config_points_elsewhere PASSED [ 27%]
+tests/test_dashboard_overview.py::test_brain_overview_explains_shadow_mode PASSED [ 27%]
+tests/test_dashboard_overview.py::test_stop_state PASSED                 [ 28%]
+tests/test_dashboard_overview.py::test_ui_escapes_text_and_clamps_bars PASSED [ 28%]
+tests/test_dashboard_overview.py::test_dashboard_renders_in_phone_view PASSED [ 28%]
+tests/test_dashboard_overview.py::test_bot_writes_chart_snapshots_and_removes_closed PASSED [ 28%]
+tests/test_dashboard_overview.py::test_position_chart_builds_and_r_multiple PASSED [ 29%]
+tests/test_dashboard_overview.py::test_bot_chart_writer_never_raises PASSED [ 29%]
+tests/test_dashboard_presentation.py::test_azerbaijani_labels_and_money_formatting PASSED [ 29%]
+tests/test_dashboard_presentation.py::test_duration_and_local_time_are_azerbaijan_time PASSED [ 29%]
+tests/test_dashboard_presentation.py::test_bot_messages_are_translated PASSED [ 29%]
+tests/test_dashboard_process.py::test_process_probe_recognizes_current_and_missing_pid PASSED [ 30%]
+tests/test_dashboard_queries.py::test_dashboard_queries_return_database_only_views_and_queue_commands PASSED [ 30%]
+tests/test_dashboard_queries.py::test_performance_report_includes_commissions_partial_closes_and_breakdowns PASSED [ 30%]
+tests/test_dashboard_queries.py::test_dashboard_feature_impact_reads_persisted_closed_trade_features PASSED [ 30%]
+tests/test_dashboard_queries.py::test_exploration_is_separate_from_main_dashboard_metrics PASSED [ 30%]
+tests/test_dashboard_queries.py::test_dashboard_open_positions_includes_current_account_exploration_hash_symbol_and_separates_external PASSED [ 31%]
+tests/test_dashboard_readiness.py::test_readiness_requires_all_six_conditions PASSED [ 31%]
+tests/test_dashboard_readiness.py::test_small_account_simulation_uses_broker_minimum_lot PASSED [ 31%]
+tests/test_db.py::test_create_insert_update_and_query_trades PASSED      [ 31%]
+tests/test_db.py::test_active_account_id_tags_new_trades_and_account_reset_clears_only_active_state PASSED [ 31%]
+tests/test_db.py::test_repeated_rejected_signals_are_deduplicated_until_reason_changes PASSED [ 32%]
+tests/test_db.py::test_spread_samples_are_bucketed_by_utc_symbol_timeframe_and_hour PASSED [ 32%]
+tests/test_db.py::test_symbol_and_global_protection_pauses_share_gate_table_and_dedupe_events PASSED [ 32%]
+tests/test_db.py::test_recent_brain_outcomes_include_costs_and_partial_closes PASSED [ 32%]
+tests/test_db.py::test_brain_outcomes_exclude_trades_without_good_process_review PASSED [ 32%]
+tests/test_db.py::test_signal_stats_snapshot_event_and_wal PASSED        [ 33%]
+tests/test_db.py::test_commands_have_utc_expiry_and_expire_stale_running_rows PASSED [ 33%]
+tests/test_db.py::test_stop_commands_remain_deliverable_to_supervisor_restart PASSED [ 33%]
+tests/test_db.py::test_partial_closes_are_persisted_by_ticket PASSED     [ 33%]
+tests/test_db.py::test_duplicate_pending_commands_are_refused PASSED     [ 33%]
+tests/test_db.py::test_guarded_demo_executor_e2e_command_is_queueable PASSED [ 34%]
+tests/test_db.py::test_profitable_sl_close_migration_is_one_time_and_preserves_losing_sl PASSED [ 34%]
+tests/test_db.py::test_daily_report_is_append_only_and_readable PASSED   [ 34%]
+tests/test_db.py::test_closed_trades_between_uses_utc_half_open_range PASSED [ 34%]
+tests/test_db.py::test_database_backup_contains_committed_wal_data PASSED [ 34%]
+tests/test_db.py::test_retention_removes_old_rows_and_thins_equity_snapshots PASSED [ 35%]
+tests/test_db.py::test_weekly_vacuum_and_idempotent_maintenance_marker PASSED [ 35%]
+tests/test_db.py::test_weekend_gate_disables_for_seven_days_after_twenty_losing_weekend_trades PASSED [ 35%]
+tests/test_executor_coverage.py::test_close_position_success PASSED      [ 35%]
+tests/test_executor_coverage.py::test_close_position_unsupported_reason PASSED [ 35%]
+tests/test_executor_coverage.py::test_close_position_not_found PASSED    [ 36%]
+tests/test_executor_coverage.py::test_close_position_tick_unavailable PASSED [ 36%]
+tests/test_executor_coverage.py::test_close_position_order_rejected PASSED [ 36%]
+tests/test_executor_coverage.py::test_close_all PASSED                   [ 36%]
+tests/test_executor_coverage.py::test_close_partial_success PASSED       [ 36%]
+tests/test_executor_coverage.py::test_close_partial_not_owned PASSED     [ 37%]
+tests/test_executor_coverage.py::test_close_partial_bad_volume PASSED    [ 37%]
+tests/test_executor_coverage.py::test_close_partial_no_filling PASSED    [ 37%]
+tests/test_executor_coverage.py::test_modify_sl_tp_ticket_not_owned PASSED [ 37%]
+tests/test_executor_coverage.py::test_modify_sl_tp_zero_sl_rejected PASSED [ 37%]
+tests/test_executor_coverage.py::test_modify_sl_tp_stop_wrong_side PASSED [ 38%]
+tests/test_executor_coverage.py::test_modify_sl_tp_broker_rejects PASSED [ 38%]
+tests/test_executor_coverage.py::test_modify_sl_tp_db_persist_failure_logged PASSED [ 38%]
+tests/test_executor_coverage.py::test_asset_group_detection PASSED       [ 38%]
+tests/test_executor_coverage.py::test_filling_mode_ioc PASSED            [ 38%]
+tests/test_executor_coverage.py::test_filling_mode_return PASSED         [ 39%]
+tests/test_executor_coverage.py::test_filling_mode_market_execution_no_fill PASSED [ 39%]
+tests/test_executor_coverage.py::test_open_trade_kill_switch PASSED      [ 39%]
+tests/test_executor_coverage.py::test_open_trade_no_sl PASSED            [ 39%]
+tests/test_executor_coverage.py::test_open_trade_no_tp PASSED            [ 39%]
+tests/test_executor_coverage.py::test_open_trade_netting_duplicate PASSED [ 40%]
+tests/test_executor_coverage.py::test_open_trade_wrong_direction PASSED  [ 40%]
+tests/test_executor_coverage.py::test_open_trade_sell_invalid_stops PASSED [ 40%]
+tests/test_executor_coverage.py::test_open_trade_inside_stops_level PASSED [ 40%]
+tests/test_executor_coverage.py::test_open_trade_db_write_failure_still_returns_success PASSED [ 40%]
+tests/test_executor_coverage.py::test_close_reason_tp PASSED             [ 41%]
+tests/test_executor_coverage.py::test_close_reason_sl_profit PASSED      [ 41%]
+tests/test_executor_coverage.py::test_close_reason_sl_loss PASSED        [ 41%]
+tests/test_executor_coverage.py::test_close_reason_forced PASSED         [ 41%]
+tests/test_executor_coverage.py::test_sl_was_moved PASSED                [ 41%]
+tests/test_executor_coverage.py::test_sync_recovers_missing_db_row PASSED [ 42%]
+tests/test_executor_coverage.py::test_sync_closes_stale_db_record_no_deals PASSED [ 42%]
+tests/test_executor_coverage.py::test_sync_with_deal_history PASSED      [ 42%]
+tests/test_executor_coverage.py::test_enforce_session_close_no_upcoming PASSED [ 42%]
+tests/test_executor_coverage.py::test_enforce_session_close_upcoming PASSED [ 43%]
+tests/test_executor_coverage.py::test_history_fallback_on_failure PASSED [ 43%]
+tests/test_executor_coverage.py::test_history_success PASSED             [ 43%]
+tests/test_executor_coverage.py::test_record_partial_deal PASSED         [ 43%]
+tests/test_executor_coverage.py::test_record_partial_deal_unknown_comment PASSED [ 43%]
+tests/test_executor_coverage2.py::test_executor_sends_flat_typed_order_fields_and_rounds_for_strict_mt5 PASSED [ 44%]
+tests/test_executor_coverage2.py::test_build_open_request_is_flat_plain_typed_and_marked_for_demo_diagnostic PASSED [ 44%]
+tests/test_executor_coverage2.py::test_executor_request_normalizers_use_symbol_precision_and_plain_ascii PASSED [ 44%]
+tests/test_executor_coverage2.py::test_enforce_time_stop_max_hold_extended_closes PASSED [ 44%]
+tests/test_executor_coverage2.py::test_enforce_time_stop_no_matching_row PASSED [ 44%]
+tests/test_executor_coverage2.py::test_enforce_time_stop_wrong_magic_skipped PASSED [ 45%]
+tests/test_executor_coverage2.py::test_enforce_time_stop_scale_out_at_target_r PASSED [ 45%]
+tests/test_executor_coverage2.py::test_enforce_time_stop_time_stop_no_extension PASSED [ 45%]
+tests/test_executor_coverage2.py::test_enforce_adverse_move_exit_disabled PASSED [ 45%]
+tests/test_executor_coverage2.py::test_enforce_adverse_move_exit_wrong_magic PASSED [ 45%]
+tests/test_executor_coverage2.py::test_enforce_adverse_move_exit_no_tick PASSED [ 46%]
+tests/test_executor_coverage2.py::test_enforce_adverse_move_exit_data_unavailable_logs_warning PASSED [ 46%]
+tests/test_executor_coverage2.py::test_enforce_adverse_move_exit_exit_triggered PASSED [ 46%]
+tests/test_executor_coverage2.py::test_enforce_news_positions_no_events PASSED [ 46%]
+tests/test_executor_coverage2.py::test_enforce_news_positions_wrong_magic PASSED [ 46%]
+tests/test_executor_coverage2.py::test_enforce_news_positions_in_profit_sets_breakeven_sl PASSED [ 47%]
+tests/test_executor_coverage2.py::test_enforce_news_positions_losing_close_to_event PASSED [ 47%]
+tests/test_executor_coverage2.py::test_open_trade_requote_tick_unavailable PASSED [ 47%]
+tests/test_executor_coverage2.py::test_open_trade_requote_price_violates_buy_stops PASSED [ 47%]
+tests/test_executor_coverage2.py::test_open_trade_order_send_fails_returns_none PASSED [ 47%]
+tests/test_executor_coverage2.py::test_open_trade_broker_rejects_with_retcode PASSED [ 48%]
+tests/test_executor_coverage2.py::test_open_trade_volume_is_rounded_down_to_broker_grid PASSED [ 48%]
+tests/test_executor_coverage2.py::test_open_trade_symbol_unavailable PASSED [ 48%]
+tests/test_executor_coverage2.py::test_open_trade_symbol_not_tradable PASSED [ 48%]
+tests/test_executor_coverage2.py::test_remediate_missing_sl_already_has_sl PASSED [ 48%]
+tests/test_executor_coverage2.py::test_remediate_missing_sl_sets_emergency_sl PASSED [ 49%]
+tests/test_executor_coverage2.py::test_remediate_missing_sl_all_retries_fail_closes_position PASSED [ 49%]
+tests/test_executor_coverage2.py::test_remediate_missing_sl_computes_atr_sl PASSED [ 49%]
+tests/test_executor_safety.py::test_modify_sl_tp_refuses_widen_or_remove_stop PASSED [ 49%]
+tests/test_executor_safety.py::test_partial_close_rejects_over_open_and_rounds_off_step_down PASSED [ 49%]
+tests/test_executor_safety.py::test_executor_refuses_direct_order_larger_than_stop_risk_volume PASSED [ 50%]
+tests/test_executor_safety.py::test_executor_real_account_needs_both_real_guards PASSED [ 50%]
+tests/test_executor_sessions.py::test_session_close_only_closes_our_positions_on_any_weekday PASSED [ 50%]
+tests/test_executor_sessions.py::test_news_preclose_only_manages_owned_positions_and_closes_losers_five_minutes_before PASSED [ 50%]
+tests/test_executor_sync.py::test_sync_separates_partial_and_final_realized_pnl PASSED [ 50%]
+tests/test_executor_sync.py::test_sync_classifies_profitable_or_moved_sl_as_trailing_stop[1.099-0.0-trail] PASSED [ 51%]
+tests/test_executor_sync.py::test_sync_classifies_profitable_or_moved_sl_as_trailing_stop[1.09-0.25-trail] PASSED [ 51%]
+tests/test_executor_sync.py::test_sync_classifies_profitable_or_moved_sl_as_trailing_stop[1.09--0.5-sl] PASSED [ 51%]
+tests/test_executor_sync.py::test_sync_mirrors_external_position_for_dashboard_without_treating_it_as_bot_trade PASSED [ 51%]
+tests/test_exploration_rules.py::test_exploration_keeps_family_stop_and_target_distances PASSED [ 51%]
+tests/test_exploration_rules.py::test_exploration_signal_comment_format PASSED [ 52%]
+tests/test_exploration_rules.py::test_exploration_caps_enforced PASSED   [ 52%]
+tests/test_feature_impact.py::test_feature_report_requires_30_trades_and_ci_excluding_zero PASSED [ 52%]
+tests/test_feature_impact.py::test_small_feature_group_is_never_marked_proven PASSED [ 52%]
+tests/test_health_notify.py::test_telegram_rate_limit_and_retry_without_logging_secrets PASSED [ 52%]
+tests/test_health_notify.py::test_telegram_retries_once_after_http_error PASSED [ 53%]
+tests/test_health_notify.py::test_telegram_error_description_is_available_without_echoing_credentials PASSED [ 53%]
+tests/test_history.py::test_native_slow_timeframes_are_supported_without_synthetic_resampling PASSED [ 53%]
+tests/test_history.py::test_history_download_and_incremental_cache PASSED [ 53%]
+tests/test_history.py::test_manifest_lists_gaps_without_synthesizing_rows PASSED [ 53%]
+tests/test_history.py::test_long_history_range_retries_in_chunks_and_keeps_available_bars PASSED [ 54%]
+tests/test_history.py::test_history_uses_large_safe_chunks_before_seven_day_fallback PASSED [ 54%]
+tests/test_history.py::test_incremental_refresh_rotates_one_symbol_timeframe_on_same_mt5_session PASSED [ 54%]
+tests/test_history.py::test_incremental_history_reresolves_stale_standard_names_to_micro PASSED [ 54%]
+tests/test_history.py::test_incremental_refresh_includes_configured_jpy_crosses_with_broker_suffixes PASSED [ 54%]
+tests/test_history.py::test_incremental_refresh_backfills_oldest_missing_chunk PASSED [ 55%]
+tests/test_history.py::test_weekend_history_uses_shorter_ranges_and_no_h1 PASSED [ 55%]
+tests/test_indicators_features.py::test_constant_series_sma_rsi_roc_and_atr PASSED [ 55%]
+tests/test_indicators_features.py::test_linear_trend_ema_and_adx_are_causal_and_directional PASSED [ 55%]
+tests/test_indicators_features.py::test_breakout_and_confirmed_swings_do_not_look_ahead PASSED [ 55%]
+tests/test_indicators_features.py::test_features_include_timeframes_and_a_known_trend_regime PASSED [ 56%]
+tests/test_levels.py::test_key_levels_have_daily_weekly_pivots_and_nearby_distances PASSED [ 56%]
+tests/test_levels.py::test_key_levels_ignore_forming_bar PASSED          [ 56%]
+tests/test_levels.py::test_key_levels_flags_stop_just_beyond_a_strong_level PASSED [ 56%]
+tests/test_market_context.py::test_context_uses_closed_m15_bars_and_maps_signal_alignment PASSED [ 56%]
+tests/test_market_context.py::test_context_ignores_forming_bar PASSED    [ 57%]
+tests/test_market_data_coverage.py::test_get_account_state_success_and_failure PASSED [ 57%]
+tests/test_market_data_coverage.py::test_get_candles_branches PASSED     [ 57%]
+tests/test_market_data_coverage.py::test_get_closed_candles_and_retry PASSED [ 57%]
+tests/test_market_data_coverage.py::test_get_candles_multi PASSED        [ 58%]
+tests/test_market_data_coverage.py::test_get_tick_branches PASSED        [ 58%]
+tests/test_market_data_coverage.py::test_get_spread_points PASSED        [ 58%]
+tests/test_market_data_coverage.py::test_price_distance_to_money PASSED  [ 58%]
+tests/test_market_data_coverage.py::test_get_cost_estimate_all_sources PASSED [ 58%]
+tests/test_micro_sizing.py::test_micro_eurusd_sizing_at_small_balance PASSED [ 59%]
+tests/test_micro_sizing.py::test_micro_gold_sizing_at_minimum_risk PASSED [ 59%]
+tests/test_micro_sizing.py::test_contract_size_fallback_when_tick_value_missing PASSED [ 59%]
+tests/test_micro_sizing.py::test_underlying_key_strips_micro_suffix PASSED [ 59%]
+tests/test_monthly_report.py::test_monthly_report_is_report_only_and_filters_to_forex_gold PASSED [ 59%]
+tests/test_monthly_report.py::test_monthly_job_due_on_first_utc_day PASSED [ 60%]
+tests/test_mt5_safety.py::test_real_login_requires_both_real_mode_and_explicit_allow_real PASSED [ 60%]
+tests/test_mt5_safety.py::test_real_login_allowed_only_with_both_explicit_guards PASSED [ 60%]
+tests/test_mt5_safety.py::test_mt5_call_timeout_marks_connection_unhealthy PASSED [ 60%]
+tests/test_mt5_safety.py::test_connect_switches_from_other_terminal_account_to_env_account PASSED [ 60%]
+tests/test_mt5_safety.py::test_connect_refuses_when_terminal_stays_on_another_account PASSED [ 61%]
+tests/test_news.py::test_high_impact_event_blocks_mapped_instrument_only_inside_window PASSED [ 61%]
+tests/test_news.py::test_stale_calendar_uses_conservative_currency_time_window PASSED [ 61%]
+tests/test_news.py::test_calendar_parser_normalizes_utc_and_skips_invalid_rows PASSED [ 61%]
+tests/test_news.py::test_minutes_until_next_high_impact_uses_mapped_currency PASSED [ 61%]
+tests/test_news.py::test_forexfactory_json_offsets_are_converted_to_utc PASSED [ 62%]
+tests/test_news.py::test_forexfactory_xml_wall_time_converts_from_eastern_to_utc PASSED [ 62%]
+tests/test_news.py::test_calendar_prefers_fresh_csv_and_uses_download_cache_when_csv_stale PASSED [ 62%]
+tests/test_news.py::test_calendar_keeps_recent_cache_if_download_fails PASSED [ 62%]
+tests/test_news.py::test_calendar_uses_blanket_fallback_only_when_both_sources_fail PASSED [ 62%]
+tests/test_news.py::test_cross_pairs_and_all_majors_are_matched PASSED   [ 63%]
+tests/test_news.py::test_blackout_minutes_come_from_config PASSED        [ 63%]
+tests/test_parquet_compat.py::test_fastparquet_roundtrip_works_when_pyarrow_is_loaded PASSED [ 63%]
+tests/test_paths_health_check.py::test_project_data_and_log_directories_use_config_or_environment PASSED [ 63%]
+tests/test_paths_health_check.py::test_health_check_reads_database_without_mt5_connection PASSED [ 63%]
+tests/test_paths_health_check.py::test_health_check_configures_utf8_output_for_windows_console PASSED [ 64%]
+tests/test_pipeline_funnel.py::test_pipeline_funnel_aggregates_stage_counts_and_reasons_since_cutoff PASSED [ 64%]
+tests/test_pipeline_funnel.py::test_pipeline_funnel_reports_unavailable_before_bot_creates_table PASSED [ 64%]
+tests/test_process_utils.py::test_windows_pid_check_uses_still_active_code PASSED [ 64%]
+tests/test_process_utils.py::test_windows_pid_check_fails_closed_on_query_error_and_access_denied PASSED [ 64%]
+tests/test_process_utils.py::test_pid_check_rejects_invalid_and_nonpositive_ids PASSED [ 65%]
+tests/test_protections.py::test_three_recent_symbol_losses_trigger_cooldown PASSED [ 65%]
+tests/test_protections.py::test_symbol_cooldown_expires_and_does_not_cross_symbols PASSED [ 65%]
+tests/test_protections.py::test_symbol_daily_r_loss_triggers_day_stop PASSED [ 65%]
+tests/test_protections.py::test_rolling_equity_drawdown_pauses_entries PASSED [ 65%]
+tests/test_research_families.py::test_session_breakout_strategy_generates_or_skips PASSED [ 66%]
+tests/test_research_families.py::test_opening_range_breakout_strategy PASSED [ 66%]
+tests/test_research_families.py::test_vwap_reversion_strategy PASSED     [ 66%]
+tests/test_research_families.py::test_donchian_breakout_strategy PASSED  [ 66%]
+tests/test_research_families.py::test_ts_momentum_strategy PASSED        [ 66%]
+tests/test_research_families.py::test_index_pullback_strategy PASSED     [ 67%]
+tests/test_research_v3_split_purge.py::test_research_purges_trades_crossing_split_boundaries_and_skips_holdout PASSED [ 67%]
+tests/test_research_v4_ultralow.py::test_ultralow_cost_uses_live_spread_times_tick_value_and_margin PASSED [ 67%]
+tests/test_research_v4_ultralow.py::test_ultralow_cost_rejects_incomplete_live_symbol_spec PASSED [ 67%]
+tests/test_research_v4_ultralow.py::test_live_min_lot_and_strict_cost_gates_use_stop_value_and_budget PASSED [ 67%]
+tests/test_research_v4_ultralow.py::test_v3_report_parser_reads_variant_baselines PASSED [ 68%]
+tests/test_research_v4_ultralow.py::test_spread_snapshot_uses_enabled_suffix_and_30_minute_london_ny_median PASSED [ 68%]
+tests/test_research_validation.py::test_random_entry_benchmark PASSED    [ 68%]
+tests/test_research_validation.py::test_walk_forward_share PASSED        [ 68%]
+tests/test_research_validation.py::test_deflated_sharpe_ratio PASSED     [ 68%]
+tests/test_risk.py::test_calc_volume_normal_case PASSED                  [ 69%]
+tests/test_risk.py::test_stressed_sizing_accounts_for_costs_and_refuses_risky_minimum PASSED [ 69%]
+tests/test_risk.py::test_calc_volume_ten_dollar_account_refused PASSED   [ 69%]
+tests/test_risk.py::test_calc_volume_rounds_down_to_step PASSED          [ 69%]
+tests/test_risk.py::test_calc_volume_caps_at_volume_max PASSED           [ 69%]
+tests/test_risk.py::test_volume_risk_uses_tick_money_for_major_asset_classes[1.1-1.099-1e-05-1.0] PASSED [ 70%]
+tests/test_risk.py::test_volume_risk_uses_tick_money_for_major_asset_classes[2000-1999-0.01-1.0] PASSED [ 70%]
+tests/test_risk.py::test_volume_risk_uses_tick_money_for_major_asset_classes[5000-4990-1.0-0.1] PASSED [ 70%]
+tests/test_risk.py::test_volume_risk_uses_tick_money_for_major_asset_classes[50000-49900-0.1-0.01] PASSED [ 70%]
+tests/test_risk.py::test_volume_risk_uses_tick_money_for_major_asset_classes[100-99-0.01-0.1] PASSED [ 70%]
+tests/test_risk.py::test_check_trade_allowed_allows_valid_trade PASSED   [ 71%]
+tests/test_risk.py::test_check_trade_allowed_kill_switch_first PASSED    [ 71%]
+tests/test_risk.py::test_check_trade_allowed_session_close_blocks_on_any_weekday PASSED [ 71%]
+tests/test_risk.py::test_session_close_gate_is_independent_of_local_weekday PASSED [ 71%]
+tests/test_risk.py::test_check_trade_allowed_daily_loss_includes_floating PASSED [ 72%]
+tests/test_risk.py::test_check_trade_allowed_weekly_loss_includes_floating PASSED [ 72%]
+tests/test_risk.py::test_check_trade_allowed_max_positions PASSED        [ 72%]
+tests/test_risk.py::test_check_trade_allowed_group_limit PASSED          [ 72%]
+tests/test_risk.py::test_check_trade_allowed_duplicate_symbol PASSED     [ 72%]
+tests/test_risk.py::test_check_trade_allowed_symbol_cooldown PASSED      [ 73%]
+tests/test_risk.py::test_check_trade_allowed_max_trades_per_symbol_per_day PASSED [ 73%]
+tests/test_risk.py::test_check_trade_allowed_global_daily_trade_cap PASSED [ 73%]
+tests/test_risk.py::test_currency_exposure_blocks_net_direction_over_limit PASSED [ 73%]
+tests/test_risk.py::test_same_underlying_with_broker_suffix_is_blocked PASSED [ 73%]
+tests/test_risk.py::test_same_underlying_different_fx_alias_is_blocked PASSED [ 74%]
+tests/test_risk.py::test_group_share_limit_after_ten_daily_trades PASSED [ 74%]
+tests/test_risk.py::test_non_fx_symbol_without_currency_metadata_does_not_crash PASSED [ 74%]
+tests/test_risk.py::test_underlying_group_limit_blocks_correlated_indices PASSED [ 74%]
+tests/test_risk.py::test_check_trade_allowed_requires_sl PASSED          [ 74%]
+tests/test_risk.py::test_check_trade_allowed_correct_sl_tp_side PASSED   [ 75%]
+tests/test_risk.py::test_check_trade_allowed_minimum_risk_reward PASSED  [ 75%]
+tests/test_risk.py::test_check_trade_allowed_cost_ratio PASSED           [ 75%]
+tests/test_risk.py::test_check_trade_allowed_margin_cap PASSED           [ 75%]
+tests/test_scanner.py::test_score_and_rank_discard_nonpositive_and_choose_best_per_symbol PASSED [ 75%]
+tests/test_scanner.py::test_scan_breadth_expands_below_target_without_forcing_orders PASSED [ 76%]
+tests/test_scanner.py::test_news_events_are_logged_once_per_calendar_refresh PASSED [ 76%]
+tests/test_scanner.py::test_diverse_movers_round_robin_groups_and_prefer_untraded_underlying PASSED [ 76%]
+tests/test_scanner.py::test_weekend_index_names_reports_only_discovered_index_symbols PASSED [ 76%]
+tests/test_scanner.py::test_repeat_penalty_is_in_expected_risk_units PASSED [ 76%]
+tests/test_scanner.py::test_scanner_mocked_market_data_logs_negative_and_ranks_positive PASSED [ 77%]
+tests/test_scanner.py::test_new_account_signal_uses_live_symbol_info_cost_without_spread_samples PASSED [ 77%]
+tests/test_scanner.py::test_open_groups_include_fresh_quotes_rejected_by_volatility_filter PASSED [ 77%]
+tests/test_scanner.py::test_cached_m1_history_refetches_when_longer_spread_window_is_needed PASSED [ 77%]
+tests/test_scheduler.py::test_daily_backup_is_atomic_per_utc_day_and_idempotent PASSED [ 77%]
+tests/test_scheduler.py::test_schedule_due_times_are_utc_and_weekly_jobs_are_sunday PASSED [ 78%]
+tests/test_scheduler.py::test_scheduler_simulates_minutes_hours_and_utc_day_rollovers_once PASSED [ 78%]
+tests/test_scheduler.py::test_memory_limit_triggers_only_above_ceiling PASSED [ 78%]
+tests/test_scheduler.py::test_log_retention_removes_only_old_log_files PASSED [ 78%]
+tests/test_scheduler.py::test_system_awake_request_flags_can_be_set_and_cleared PASSED [ 78%]
+tests/test_session_context.py::test_session_context_names_and_elapsed_minutes_use_utc PASSED [ 79%]
+tests/test_session_context.py::test_session_context_range_uses_closed_bars_only PASSED [ 79%]
+tests/test_strategies.py::test_strategy_returns_none_or_valid_closed_bar_signal[trend_pullback] PASSED [ 79%]
+tests/test_strategies.py::test_strategy_returns_none_or_valid_closed_bar_signal[mean_reversion] PASSED [ 79%]
+tests/test_strategies.py::test_strategy_returns_none_or_valid_closed_bar_signal[breakout] PASSED [ 79%]
+tests/test_strategies.py::test_strategy_returns_none_or_valid_closed_bar_signal[volatility_scalp] PASSED [ 80%]
+tests/test_strategies.py::test_strategy_returns_none_or_valid_closed_bar_signal[session_breakout] PASSED [ 80%]
+tests/test_strategies.py::test_strategy_returns_none_or_valid_closed_bar_signal[opening_range_breakout] PASSED [ 80%]
+tests/test_strategies.py::test_strategy_returns_none_or_valid_closed_bar_signal[vwap_reversion] PASSED [ 80%]
+tests/test_strategies.py::test_strategy_returns_none_or_valid_closed_bar_signal[donchian_breakout] PASSED [ 80%]
+tests/test_strategies.py::test_strategy_returns_none_or_valid_closed_bar_signal[ts_momentum] PASSED [ 81%]
+tests/test_strategies.py::test_strategy_returns_none_or_valid_closed_bar_signal[index_pullback_200d] PASSED [ 81%]
+tests/test_strategies.py::test_registry_loads_only_enabled_and_group_eligible_strategies PASSED [ 81%]
+tests/test_strategies.py::test_volatility_scalp_uses_precomputed_backtest_features PASSED [ 81%]
+tests/test_strategies.py::test_volatility_scalp_uses_relative_atr_percentile PASSED [ 81%]
+tests/test_strategies.py::test_mean_reversion_uses_its_own_reversal_gate_instead_of_generic_mtf PASSED [ 82%]
+tests/test_supervisor.py::test_supervisor_restarts_failed_child_with_backoff PASSED [ 82%]
+tests/test_supervisor.py::test_supervisor_does_not_restart_after_stop_command PASSED [ 82%]
+tests/test_supervisor.py::test_watchdog_grants_new_child_a_startup_grace_before_reusing_old_heartbeat PASSED [ 82%]
+tests/test_supervisor.py::test_detached_supervisor_prefers_pythonw_and_falls_back PASSED [ 82%]
+tests/test_supervisor.py::test_supervisor_health_check_interval PASSED   [ 83%]
+tests/test_supervisor.py::test_detached_console_handlers_rebind_to_utf8_log_stream PASSED [ 83%]
+tests/test_supervisor.py::test_supervisor_stops_after_restart_limit_and_logs_critical PASSED [ 83%]
+tests/test_supervisor.py::test_supervisor_removes_only_confirmed_dead_bot_lock PASSED [ 83%]
+tests/test_supervisor.py::test_watchdog_detects_stale_running_heartbeat_and_writes_crash_report PASSED [ 83%]
+tests/test_supervisor.py::test_crash_handlers_capture_main_and_thread_tracebacks PASSED [ 84%]
+tests/test_symbols.py::test_underlying_normalizes_cash_and_expiry_suffixes PASSED [ 84%]
+tests/test_symbols.py::test_broker_path_with_spelled_out_indices_is_grouped_as_index PASSED [ 84%]
+tests/test_symbols.py::test_dated_futures_are_excluded_from_universe_by_default PASSED [ 84%]
+tests/test_symbols.py::test_dated_futures_can_be_included_when_explicitly_configured PASSED [ 84%]
+tests/test_symbols.py::test_focus_universe_resolves_only_ten_configured_logical_symbols PASSED [ 85%]
+tests/test_symbols.py::test_main_profile_prefers_micro_names_for_all_focus_forex_and_gold PASSED [ 85%]
+tests/test_symbols.py::test_alias_prefers_enabled_suffix_when_exact_broker_symbol_is_disabled PASSED [ 85%]
+tests/test_symbols.py::test_weekend_universe_is_crypto_gold247_plus_fresh_open_indices PASSED [ 85%]
+tests/test_symbols.py::test_configured_liquid_symbols_are_selected_first_for_rotation PASSED [ 86%]
+tests/test_symbols.py::test_missing_session_history_falls_back_to_recent_bar_activity PASSED [ 86%]
+tests/test_symbols.py::test_missing_recent_bar_activity_rejects_when_session_history_is_unavailable PASSED [ 86%]
+tests/test_symbols.py::test_session_close_is_inferred_in_utc_from_repeated_hourly_gaps PASSED [ 86%]
+tests/test_symbols.py::test_market_open_check_uses_recurring_weekend_closures PASSED [ 86%]
+tests/test_symbols.py::test_forex_reopen_requires_fresh_tradable_quote PASSED [ 87%]
+tests/test_telegram_commands.py::test_telegram_commands_are_allowlisted_confirmed_and_deduplicated PASSED [ 87%]
+tests/test_time_utils.py::test_detects_server_offset_from_selected_liquid_symbol PASSED [ 87%]
+tests/test_time_utils.py::test_weekend_offset_ignores_stale_fx_tick_and_uses_fresh_crypto_fallback PASSED [ 87%]
+tests/test_time_utils.py::test_weekend_rejects_stale_tick_gap_as_impossible_server_offset PASSED [ 87%]
+tests/test_time_utils.py::test_converts_mt5_server_epoch_to_utc PASSED   [ 88%]
+tests/test_time_utils.py::test_server_clock_drift_uses_rounded_hour_offset PASSED [ 88%]
+tests/test_time_utils.py::test_bot_normalizes_local_saturday_clock_to_utc_friday PASSED [ 88%]
+tests/test_time_utils.py::test_candle_index_is_converted_to_utc_and_symbol_is_selected PASSED [ 88%]
+tests/test_time_utils.py::test_closed_candles_retries_transient_mt5_failure PASSED [ 88%]
+tests/test_trade_rules.py::test_mtf_agreement_requires_all_three_directions PASSED [ 89%]
+tests/test_trade_rules.py::test_spread_filter_compares_same_price_units_over_horizon PASSED [ 89%]
+tests/test_trade_rules.py::test_mtf_two_of_three_agreement_accepts_one_disagreement PASSED [ 89%]
+tests/test_trade_rules.py::test_mean_reversion_bypasses_only_generic_direction_agreement PASSED [ 89%]
+tests/test_trade_rules.py::test_h4_exploration_ignores_lower_timeframe_disagreement_but_normal_does_not PASSED [ 89%]
+tests/test_trade_rules.py::test_weekend_policy_activates_only_for_enabled_weekend_utc PASSED [ 90%]
+tests/test_trade_rules.py::test_stop_target_from_atr_uses_configured_horizon PASSED [ 90%]
+tests/test_trade_rules.py::test_spread_must_be_within_median_multiple PASSED [ 90%]
+tests/test_trade_rules.py::test_confidence_gate PASSED                   [ 90%]
+tests/test_trade_rules.py::test_extension_requires_protected_profitable_trade_and_score PASSED [ 90%]
+tests/test_trade_rules.py::test_early_exit_score_and_r_band PASSED       [ 91%]
+tests/test_trade_rules.py::test_scale_out_respects_step_minimum_and_closes_all_if_unsplittable PASSED [ 91%]
+tests/test_trade_rules.py::test_trailing_stop_only_tightens_and_stagnation_rule PASSED [ 91%]
+tests/test_trade_rules.py::test_extension_requires_cost_protecting_stop_and_rising_momentum PASSED [ 91%]
+tests/test_universal_update.py::test_account_type_comes_from_mt5_and_unknown_is_real PASSED [ 91%]
+tests/test_universal_update.py::test_demo_uses_one_percent_in_every_mode_real_keeps_locked_quarter_percent PASSED [ 92%]
+tests/test_universal_update.py::test_loss_limits_are_separate_for_demo_and_real PASSED [ 92%]
+tests/test_universal_update.py::test_demo_ceilings_cannot_be_raised[risk_per_trade_pct-2.5] PASSED [ 92%]
+tests/test_universal_update.py::test_demo_ceilings_cannot_be_raised[daily_loss_limit_pct-11] PASSED [ 92%]
+tests/test_universal_update.py::test_demo_ceilings_cannot_be_raised[weekly_loss_limit_pct-26] PASSED [ 92%]
+tests/test_universal_update.py::test_demo_ceilings_cannot_be_raised[brain_max_risk_pct-3] PASSED [ 93%]
+tests/test_universal_update.py::test_real_brain_bound_cannot_exceed_locked_ceiling PASSED [ 93%]
+tests/test_universal_update.py::test_applied_risk_reclamps_brain_value_to_account_bounds PASSED [ 93%]
+tests/test_universal_update.py::test_real_account_with_demo_config_still_gets_real_limits PASSED [ 93%]
+tests/test_universal_update.py::test_daily_loss_gate_uses_account_type PASSED [ 93%]
+tests/test_universal_update.py::test_brain_is_live_only_when_every_condition_holds PASSED [ 94%]
+tests/test_universal_update.py::test_current_config_keeps_brain_shadow_only PASSED [ 94%]
+tests/test_universal_update.py::test_dynamic_risk_scales_with_probability_inside_bounds PASSED [ 94%]
+tests/test_universal_update.py::test_dynamic_risk_falls_back_to_base[memory0-decision0-0] PASSED [ 94%]
+tests/test_universal_update.py::test_dynamic_risk_falls_back_to_base[memory1-decision1-0] PASSED [ 94%]
+tests/test_universal_update.py::test_dynamic_risk_falls_back_to_base[memory2-decision2-0] PASSED [ 95%]
+tests/test_universal_update.py::test_dynamic_risk_falls_back_to_base[memory3-decision3-0] PASSED [ 95%]
+tests/test_universal_update.py::test_dynamic_risk_falls_back_to_base[memory4-decision4-0] PASSED [ 95%]
+tests/test_universal_update.py::test_dynamic_risk_falls_back_to_base[memory5-decision5-3] PASSED [ 95%]
+tests/test_universal_update.py::test_consecutive_losses_counts_until_first_win PASSED [ 95%]
+tests/test_universal_update.py::test_ood_guard_flags_far_situations PASSED [ 96%]
+tests/test_universal_update.py::test_query_memory_reports_nearest_distance PASSED [ 96%]
+tests/test_universal_update.py::test_modify_is_deferred_inside_freeze_level PASSED [ 96%]
+tests/test_universal_update.py::test_modify_respects_stops_level_for_new_levels PASSED [ 96%]
+tests/test_universal_update.py::test_close_and_partial_close_are_deferred_inside_freeze_level PASSED [ 96%]
+tests/test_universal_update.py::test_in_flight_guard_is_thread_safe PASSED [ 97%]
+tests/test_universal_update.py::test_single_instance_lock_blocks_second_instance_and_releases PASSED [ 97%]
+tests/test_universal_update.py::test_drift_settings_are_read_from_self_learning PASSED [ 97%]
+Timeout (0:01:00)!
+Thread 0x00002258 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x000064e0 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00006918 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x000009c4 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 355 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 171 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\mt5_client.py", line 34 in _worker_loop
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00006830 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 355 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 171 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\mt5_client.py", line 34 in _worker_loop
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x000042dc (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 355 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 171 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\mt5_client.py", line 34 in _worker_loop
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00007190 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 355 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 171 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\mt5_client.py", line 34 in _worker_loop
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x000064d0 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 355 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 171 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\mt5_client.py", line 34 in _worker_loop
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00007edc (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00007e90 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00007468 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00003194 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00002f20 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00006658 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x000001cc (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00006c18 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00001984 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x000047c0 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00007be4 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00005650 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x000078f0 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00007da4 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00004474 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x000064e8 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00004ca0 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00007afc (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x0000600c (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x000072c0 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x000001a0 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x0000615c (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x0000620c (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x0000094c (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00007ef4 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00007ee8 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00003b84 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00004040 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x000022fc (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x000077b4 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00007bcc (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00005888 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00002e3c (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x000031a4 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x000065c4 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00003b74 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00001030 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 359 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 180 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\notify.py", line 34 in _worker
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00001af0 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 355 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 171 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\mt5_client.py", line 34 in _worker_loop
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00007b40 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 355 in wait
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\queue.py", line 171 in get
+  File "C:\Users\Murad\Desktop\tradingbot\src\mt5_client.py", line 34 in _worker_loop
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1012 in run
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1075 in _bootstrap_inner
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1032 in _bootstrap
+
+Thread 0x00007950 (most recent call first):
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\pathlib.py", line 1013 in open
+  File "C:\Users\Murad\AppData\Local\Programs\Python\Python312\Lib\pathlib.py", line 1027 in read_text
+  File "C:\Users\Murad\Desktop\tradingbot\tests\test_universal_update.py", line 245 in test_source_parses_with_python_311_rules
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\_pytest\python.py", line 187 in pytest_pyfunc_call
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\pluggy\_execution.py", line 147 in _multicall
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\pluggy\_manager.py", line 183 in _hookexec
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\pluggy\_caller.py", line 197 in __call__
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\_pytest\python.py", line 1798 in runtest
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\_pytest\runner.py", line 184 in pytest_runtest_call
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\pluggy\_execution.py", line 147 in _multicall
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\pluggy\_manager.py", line 183 in _hookexec
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\pluggy\_caller.py", line 197 in __call__
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\_pytest\runner.py", line 250 in <lambda>
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\_pytest\runner.py", line 361 in from_call
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\_pytest\runner.py", line 249 in call_and_report
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\_pytest\runner.py", line 139 in runtestprotocol
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\_pytest\runner.py", line 118 in pytest_runtest_protocol
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\pluggy\_execution.py", line 147 in _multicall
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\pluggy\_manager.py", line 183 in _hookexec
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\pluggy\_caller.py", line 197 in __call__
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\_pytest\main.py", line 411 in pytest_runtestloop
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\pluggy\_execution.py", line 147 in _multicall
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\pluggy\_manager.py", line 183 in _hookexec
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\pluggy\_caller.py", line 197 in __call__
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\_pytest\main.py", line 387 in _main
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\_pytest\main.py", line 333 in wrap_session
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\_pytest\main.py", line 380 in pytest_cmdline_main
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\pluggy\_execution.py", line 147 in _multicall
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\pluggy\_manager.py", line 183 in _hookexec
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\pluggy\_caller.py", line 197 in __call__
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\_pytest\config\__init__.py", line 262 in _main
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\_pytest\config\__init__.py", line 286 in _console_main
+  File "C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\pytest\__main__.py", line 9 in <module>
+  File "<frozen runpy>", line 88 in _run_code
+  File "<frozen runpy>", line 198 in _run_module_as_main
+tests/test_universal_update.py::test_source_parses_with_python_311_rules PASSED [ 97%]
+tests/test_universal_update.py::test_start_scripts_never_delete_a_halt_file PASSED [ 97%]
+tests/test_universal_update.py::test_linux_entrypoint_matches_windows_stop_semantics PASSED [ 98%]
+tests/test_universal_update.py::test_live_brain_raises_demo_risk_within_bounds PASSED [ 98%]
+tests/test_universal_update.py::test_live_brain_rejection_blocks_signal PASSED [ 98%]
+tests/test_universal_update.py::test_min_lot_risk_money PASSED           [ 98%]
+tests/test_universal_update.py::test_min_lot_cap_is_demo_only_and_locked PASSED [ 98%]
+tests/test_universal_update.py::test_small_demo_balance_trades_minimum_lot PASSED [ 99%]
+tests/test_universal_update.py::test_tiny_balance_refuses_when_minimum_lot_is_too_risky PASSED [ 99%]
+tests/test_universal_update.py::test_daily_backup_is_consistent_once_per_day_and_rotated FAILED [ 99%]
+tests/test_universal_update.py::test_bot_backup_never_raises PASSED      [ 99%]
+tests/test_universal_update.py::test_server_address_is_not_in_the_repository PASSED [100%]
+
+================================== FAILURES ===================================
+__________ test_daily_backup_is_consistent_once_per_day_and_rotated ___________
+
+tmp_path = WindowsPath('C:/Users/Murad/AppData/Local/Temp/pytest-of-Murad/pytest-414/test_daily_backup_is_consisten0')
+
+    def test_daily_backup_is_consistent_once_per_day_and_rotated(tmp_path):
+        from datetime import date
+        from src.db import Database, backup_database
+        db = Database(tmp_path / 'bot.db')
+        with db.connect() as c:
+            c.execute("INSERT INTO trades(ticket,symbol,direction,status,magic) VALUES(1,'EURUSD','buy','closed',7)")
+        folder = tmp_path / 'backups'
+>       first = backup_database(db.path, folder, keep_days=3, today=date(2026, 11, 1))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_universal_update.py:367: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\db.py:135: in backup_database
+    tmp.replace(target)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = WindowsPath('C:/Users/Murad/AppData/Local/Temp/pytest-of-Murad/pytest-414/test_daily_backup_is_consisten0/backups/bot-2026-11-01.tmp')
+target = WindowsPath('C:/Users/Murad/AppData/Local/Temp/pytest-of-Murad/pytest-414/test_daily_backup_is_consisten0/backups/bot-2026-11-01.db')
+
+    def replace(self, target):
+        """
+        Rename this path to the target path, overwriting if that path exists.
+    
+        The target path may be absolute or relative. Relative paths are
+        interpreted relative to the current working directory, *not* the
+        directory of the Path object.
+    
+        Returns the new Path instance pointing to the target path.
+        """
+>       os.replace(self, target)
+E       PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\Murad\\AppData\\Local\\Temp\\pytest-of-Murad\\pytest-414\\test_daily_backup_is_consisten0\\backups\\bot-2026-11-01.tmp' -> 'C:\\Users\\Murad\\AppData\\Local\\Temp\\pytest-of-Murad\\pytest-414\\test_daily_backup_is_consisten0\\backups\\bot-2026-11-01.db'
+
+..\..\AppData\Local\Programs\Python\Python312\Lib\pathlib.py:1376: PermissionError
+============================== warnings summary ===============================
+tests/test_audit_high04.py::test_parquet_fallback_preserves_dataframe_structure
+tests/test_brain_dataset.py::test_labeled_dataset_is_causal_and_contains_both_directions
+tests/test_brain_dataset.py::test_labeled_dataset_is_causal_and_contains_both_directions
+tests/test_brain_dataset.py::test_labeled_dataset_is_causal_and_contains_both_directions
+tests/test_brain_dataset.py::test_labeled_dataset_is_causal_and_contains_both_directions
+tests/test_history.py::test_history_download_and_incremental_cache
+tests/test_history.py::test_incremental_refresh_backfills_oldest_missing_chunk
+  C:\Users\Murad\Desktop\tradingbot\.venv\Lib\site-packages\fastparquet\core.py:503: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    my_nan = assign.dtype.type("NaT")
+
+tests/test_backtest.py::test_next_bar_buy_fills_at_ask_and_both_hits_use_sl_first
+tests/test_backtest.py::test_time_stop_closes_at_max_hold
+tests/test_backtest.py::test_default_twenty_minute_horizon_closes_unprotected_trade
+tests/test_backtest.py::test_ten_dollar_equity_skips_trade_when_min_lot_exceeds_risk
+tests/test_backtest.py::test_scale_out_records_partial_take_profit
+tests/test_backtest.py::test_future_bar_changes_cannot_change_earlier_signal_fill
+tests/test_backtest.py::test_future_bar_changes_cannot_change_earlier_signal_fill
+  C:\Users\Murad\Desktop\tradingbot\src\backtest\engine.py:44: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    return index>=0 and pd.Timestamp(stamp)-frame.index[index]<=pd.Timedelta(minutes=2)
+
+tests/test_brain_dataset.py: 46 warnings
+  C:\Users\Murad\Desktop\tradingbot\src\brain\dataset.py:83: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    i5=int(m5.index.searchsorted(stamp-pd.Timedelta(minutes=5),side='right'))-1
+
+tests/test_brain_dataset.py: 46 warnings
+  C:\Users\Murad\Desktop\tradingbot\src\brain\dataset.py:84: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    i15=int(m15.index.searchsorted(stamp-pd.Timedelta(minutes=15),side='right'))-1
+
+tests/test_brain_dataset.py: 60 warnings
+  C:\Users\Murad\Desktop\tradingbot\src\brain\training.py:47: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    deadline=opened+__import__('pandas').Timedelta(minutes=timeout)
+
+tests/test_scanner.py::test_new_account_signal_uses_live_symbol_info_cost_without_spread_samples
+  C:\Users\Murad\Desktop\tradingbot\tests\test_scanner.py:150: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    datetime.now(timezone.utc)-pd.Timedelta(hours=24))['samples']==0
+
+tests/test_symbols.py::test_missing_session_history_falls_back_to_recent_bar_activity
+tests/test_symbols.py::test_missing_session_history_falls_back_to_recent_bar_activity
+  C:\Users\Murad\Desktop\tradingbot\tests\test_symbols.py:120: DeprecationWarning: The 'generic' unit for NumPy timedelta is deprecated, and will raise an error in the future. This includes implicit conversion of bare integers (e.g. `+ 1`). Please use a specific unit instead.
+    monkeypatch.setattr(market_data,'get_closed_candles',lambda *args,**kwargs:pd.DataFrame({'close':[1]},index=[now-pd.Timedelta(minutes=1)]))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+============================ slowest 20 durations =============================
+197.53s call     tests/test_universal_update.py::test_source_parses_with_python_311_rules
+5.07s call     tests/test_supervisor.py::test_supervisor_stops_after_restart_limit_and_logs_critical
+3.22s call     tests/test_dashboard_overview.py::test_position_chart_builds_and_r_multiple
+2.96s call     tests/test_dashboard_app_health.py::test_dashboard_renders_without_streamlit_exception
+2.78s call     tests/test_bot.py::test_run_forever_records_exit_reason
+2.60s call     tests/test_bot.py::test_run_forever_releases_lock_and_shuts_down_client
+1.83s call     tests/test_audit_low02.py::test_TradeRequest_only_defined_not_used
+1.09s call     tests/test_backtest_report.py::test_report_saves_summary_csv_and_equity_plot
+1.07s call     tests/test_dashboard_readiness.py::test_readiness_requires_all_six_conditions
+0.81s call     tests/test_dashboard_overview.py::test_dashboard_renders_in_phone_view
+0.71s call     tests/test_audit_low02.py::test_DummyStrategy_only_defined_not_used
+0.52s call     tests/test_audit_med06.py::test_write_hang_report_accepts_child_pid_and_requests_traceback
+0.39s call     tests/test_bot.py::test_three_consecutive_order_rejections_auto_pause_new_entries
+0.38s call     tests/test_bot.py::test_trade_mode_opens_only_live_allowlisted_strategy
+0.38s call     tests/test_bot.py::test_pause_and_resume_commands_manage_stop_file
+0.37s call     tests/test_brain_dataset.py::test_labeled_dataset_is_causal_and_contains_both_directions
+0.36s call     tests/test_bot.py::test_exploration_can_collect_demo_data_through_adaptive_strategy_gate
+0.36s call     tests/test_causality.py::test_indicators_and_brain_features_ignore_bars_after_sample_time
+0.34s call     tests/test_universal_update.py::test_tiny_balance_refuses_when_minimum_lot_is_too_risky
+0.33s call     tests/test_universal_update.py::test_live_brain_rejection_blocks_signal
+=========================== short test summary info ===========================
+FAILED tests/test_universal_update.py::test_daily_backup_is_consistent_once_per_day_and_rotated
+=========== 1 failed, 492 passed, 169 warnings in 242.27s (0:04:02) ===========

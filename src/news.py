@@ -21,14 +21,43 @@ class CalendarEvent:
     previous: str = ""
 
 
+# Display list for the dashboard (examples per currency); matching uses symbol_currencies().
 CURRENCY_SYMBOLS = {
-    "USD": ("EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "US500", "NAS100", "US30", "GOLD"),
-    "EUR": ("EURUSD", "GER40"),
-    "GBP": ("GBPUSD",),
-    "JPY": ("USDJPY",),
-    "AUD": ("AUDUSD",),
+    "USD": ("EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD", "US500", "NAS100", "US30", "GOLD", "SILVER"),
+    "EUR": ("EURUSD", "EURJPY", "EURGBP", "GER40"),
+    "GBP": ("GBPUSD", "GBPJPY", "EURGBP", "UK100"),
+    "JPY": ("USDJPY", "EURJPY", "GBPJPY", "JP225"),
+    "AUD": ("AUDUSD", "AUS200"),
     "CAD": ("USDCAD",),
+    "CHF": ("USDCHF",),
+    "NZD": ("NZDUSD",),
 }
+CURRENCIES = {"USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "NZD", "CNH", "CNY"}
+# Non-FX instruments -> the currency whose news moves them
+INSTRUMENT_CURRENCY = (
+    (("GOLD", "XAU", "SILVER", "XAG", "OIL", "WTI", "BRENT", "NGAS"), "USD"),
+    (("US500", "US30", "US100", "NAS100", "USTEC", "SPX", "DJ30", "US2000"), "USD"),
+    (("GER40", "GER30", "DE40", "EU50", "EUSTX", "FRA40", "SPA35", "IT40"), "EUR"),
+    (("UK100",), "GBP"),
+    (("JP225", "JPN225"), "JPY"),
+    (("AUS200",), "AUD"),
+)
+
+
+def symbol_currencies(symbol: str) -> set[str]:
+    """Currencies whose high-impact news should block or protect this symbol.
+
+    FX pairs: both legs (EURJPY -> EUR and JPY), whatever broker suffix follows.
+    Metals, energy and indices: the currency they are priced in / belong to."""
+    name = "".join(ch for ch in str(symbol).upper() if ch.isalnum())
+    found = set()
+    if len(name) >= 6 and name[:3] in CURRENCIES and name[3:6] in CURRENCIES:
+        found.update({name[:3], name[3:6]})
+    for prefixes, currency in INSTRUMENT_CURRENCY:
+        if any(name.startswith(prefix) for prefix in prefixes):
+            found.add(currency)
+            if name[3:6] in CURRENCIES and name.startswith(("XAU", "XAG")): found.add(name[3:6])
+    return found
 
 
 def parse_calendar(path: str | Path) -> tuple[list[CalendarEvent], datetime | None]:
@@ -176,8 +205,7 @@ def _download_calendar(url: str = "https://nfs.faireconomy.media/ff_calendar_thi
 
 
 def event_matches_symbol(event: CalendarEvent, symbol: str) -> bool:
-    name = symbol.upper()
-    return any(alias in name or name in alias for alias in CURRENCY_SYMBOLS.get(event.currency, ()))
+    return str(event.currency).upper() in symbol_currencies(symbol)
 
 
 def minutes_to_next_high_impact(symbol: str, now_utc: datetime, events: list[CalendarEvent]) -> float | None:
@@ -187,7 +215,8 @@ def minutes_to_next_high_impact(symbol: str, now_utc: datetime, events: list[Cal
     return (min(event.time for event in upcoming)-now).total_seconds()/60 if upcoming else None
 
 
-def entry_block_reason(symbol: str, now_utc: datetime, events: list[CalendarEvent], updated_at: datetime | None, stale_after_hours: float = 24.0) -> str:
+def entry_block_reason(symbol: str, now_utc: datetime, events: list[CalendarEvent], updated_at: datetime | None, stale_after_hours: float = 24.0,
+                       minutes_before: float = 15.0, minutes_after: float = 15.0) -> str:
     """Block around high-impact events, with a conservative stale-feed window."""
     now = now_utc.replace(tzinfo=timezone.utc) if now_utc.tzinfo is None else now_utc.astimezone(timezone.utc)
     if updated_at is None or now - updated_at > timedelta(hours=stale_after_hours):
@@ -198,7 +227,7 @@ def entry_block_reason(symbol: str, now_utc: datetime, events: list[CalendarEven
     for event in events:
         if event.importance != "HIGH" or not event_matches_symbol(event, symbol):
             continue
-        if event.time - timedelta(minutes=15) <= now <= event.time + timedelta(minutes=15):
+        if event.time - timedelta(minutes=float(minutes_before)) <= now <= event.time + timedelta(minutes=float(minutes_after)):
             return f"high-impact {event.currency} event: {event.name}"
     return ""
 
