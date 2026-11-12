@@ -374,3 +374,35 @@ def test_weekend_management_uses_configured_horizon_and_extension(tmp_path):
     assert result.config['risk']['max_hold_extended_minutes']==120
     monday=bot._management_settings(datetime(2026,11,9,12,tzinfo=timezone.utc))
     assert monday is settings
+
+def test_restart_command_requests_supervisor_restart_without_stop(tmp_path):
+    bot,db,_,_,scanner,_,_=make_bot(tmp_path,'trade',['breakout'])
+    bot._data_dir=tmp_path/'data'; bot._data_dir.mkdir(exist_ok=True)
+    command=db.insert_command('restart'); result=bot.cycle()
+    assert result.continue_running is False and scanner.calls==0
+    assert (tmp_path/'data'/'restart.request').exists() and not (tmp_path/'data'/'supervisor.stop').exists()
+    with db.connect() as conn: assert conn.execute('SELECT status FROM commands WHERE id=?',(command,)).fetchone()[0]=='done'
+
+def test_close_position_command_closes_one_ticket(tmp_path):
+    bot,db,_,_,_,executor,_=make_bot(tmp_path,candidate=False)
+    closed=[]; executor.close_position=lambda ticket,reason: closed.append((ticket,reason)) or TradeResult(True,ticket,0,0,10009,'done')
+    command=db.insert_command('close_position:42'); bot.cycle()
+    assert closed==[(42,'manual')]
+    with db.connect() as conn: assert conn.execute('SELECT status FROM commands WHERE id=?',(command,)).fetchone()[0]=='done'
+
+def test_failed_close_position_command_is_marked_failed(tmp_path):
+    bot,db,_,_,_,executor,_=make_bot(tmp_path,candidate=False)
+    executor.close_position=lambda ticket,reason: TradeResult(False,ticket,0,0,10006,'rejected')
+    command=db.insert_command('close_position:7'); bot.cycle()
+    with db.connect() as conn: assert conn.execute('SELECT status FROM commands WHERE id=?',(command,)).fetchone()[0]=='failed'
+
+def test_fast_watch_rechecks_early_exit_between_cycles_only_with_open_positions(tmp_path):
+    bot,db,mt5,_,_,executor,_=make_bot(tmp_path,candidate=False)
+    bot.settings.config['dashboard']={'chart_refresh_seconds':2}; bot.settings.config['risk']['early_exit_enabled']=True
+    calls=[]; executor.enforce_adverse_move_exit=lambda settings: calls.append(1) or []
+    bot._started=True; bot.sleep_fn=lambda s: None
+    bot._heartbeat_sleep(10)
+    assert calls==[]
+    mt5.positions=[SimpleNamespace(magic=bot.settings.magic_number,ticket=1,symbol='EURUSD',type=0,volume=.1,price_open=1.0,sl=0,tp=0,time=0,profit=0)]
+    bot._heartbeat_sleep(10)
+    assert len(calls)==4   # spans at 2,4,6,8 s (not after the last one: the cycle runs then)

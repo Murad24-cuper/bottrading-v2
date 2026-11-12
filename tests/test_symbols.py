@@ -76,7 +76,7 @@ def test_focus_universe_resolves_only_ten_configured_logical_symbols():
 def test_main_profile_prefers_micro_names_for_all_focus_forex_and_gold():
     import yaml
     from pathlib import Path
-    config=yaml.safe_load((Path(__file__).parents[1]/'config.yaml').read_text(encoding='utf-8'))
+    config=yaml.safe_load((Path(__file__).resolve().parent / 'fixtures' / 'default_config.yaml').read_text(encoding='utf-8'))
     logicals=['EURUSD','GBPUSD','USDJPY','AUDUSD','USDCAD','EURJPY','GBPJPY','GOLD']
     aliases=config['universe']['symbol_aliases']
     names=[f'{name}micro' for name in logicals]

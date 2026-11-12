@@ -26,7 +26,8 @@ def _atomic_write(path: Path, payload: dict) -> None:
     os.replace(tmp,path)
 
 
-def write_position_charts(mt5, positions, data_dir: str|Path, open_rows: dict|None=None) -> int:
+def write_position_charts(mt5, positions, data_dir: str|Path, open_rows: dict|None=None, config: dict|None=None,
+                          max_hold_minutes: float|None=None) -> int:
     """Write one chart file per open position and remove files of closed ones.
 
     Returns how many chart files were written."""
@@ -52,12 +53,33 @@ def write_position_charts(mt5, positions, data_dir: str|Path, open_rows: dict|No
                  'open_time':opened,'open_price':float(p.price_open),'sl':float(p.sl or 0) or None,'tp':float(p.tp or 0) or None,
                  'current':current,'profit':float(getattr(p,'profit',0) or 0),
                  'strategy':row.get('strategy'),'updated_at':datetime.now(timezone.utc).isoformat(),'bars':frames}
+        if config is not None and current is not None:
+            payload['analysis']=_analysis(mt5,p,row,config,max_hold_minutes,'buy' if is_buy else 'sell',current,opened)
         _atomic_write(folder/f'{ticket}.json',payload); written+=1
     for stale in folder.glob('*.json'):
         if stale.name not in keep:
             try: stale.unlink()
             except OSError: pass
     return written
+
+
+def _analysis(mt5, position, row, config, max_hold_minutes, direction, current, opened):
+    """What the management rules currently say about this position (best effort)."""
+    from . import market_data
+    from .position_watch import analyze
+    try:
+        risk=config.get('risk',{}) or {}
+        candles={}
+        for timeframe,count in (('M1',max(60,int(risk.get('early_exit_volume_lookback',20))+5)),('M5',80),('M15',80)):
+            try: candles[timeframe]=market_data.get_closed_candles(mt5,str(position.symbol),timeframe,count)
+            except Exception: pass
+        try: age=(datetime.now(timezone.utc)-datetime.fromisoformat(opened)).total_seconds()/60
+        except (TypeError,ValueError): age=0.0
+        hold=float(max_hold_minutes if max_hold_minutes is not None else risk.get('max_hold_minutes',30))
+        return analyze(direction,float(position.price_open),current,row,risk,config.get('scanner',{}) or {},candles,age,hold,
+                       float(risk.get('stagnation_minutes',10)),float(risk.get('stagnation_min_r',.2)))
+    except Exception:
+        return None
 
 
 def read_position_chart(data_dir: str|Path, ticket: int) -> dict|None:

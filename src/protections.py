@@ -7,6 +7,7 @@ def check_protections(symbol_trades, equity_snapshots, symbol, now, config):
     """Return `(blocked, reason)` for config-driven symbol/global protections."""
     now=now.replace(tzinfo=timezone.utc) if now.tzinfo is None else now.astimezone(timezone.utc)
     if not config.get('enabled',True): return False,''
+    symbol_pauses=bool(config.get('symbol_pauses_enabled',True))   # per-symbol loss pauses; the rolling drawdown below always applies
     rows=sorted((row for row in symbol_trades if str(row.get('symbol'))==str(symbol)),
                 key=lambda row:str(row.get('close_time','')),reverse=True)
     consecutive=int(config.get('consecutive_losses',3)); cooldown=float(config.get('cooldown_hours',24))
@@ -16,7 +17,7 @@ def check_protections(symbol_trades, equity_snapshots, symbol, now, config):
         if net>=0: break
         losses+=1
         if latest_loss is None: latest_loss=row.get('close_time')
-    if losses>=consecutive and latest_loss:
+    if symbol_pauses and losses>=consecutive and latest_loss:
         try: close=datetime.fromisoformat(str(latest_loss).replace('Z','+00:00'))
         except ValueError: close=None
         if close:
@@ -26,7 +27,7 @@ def check_protections(symbol_trades, equity_snapshots, symbol, now, config):
     day_start=now.replace(hour=0,minute=0,second=0,microsecond=0)
     day_r=sum(float(row.get('outcome_r') or 0) for row in rows
               if _utc(row.get('close_time')) and _utc(row.get('close_time'))>=day_start)
-    if day_r<=-abs(float(config.get('symbol_daily_loss_r',2.0))):
+    if symbol_pauses and day_r<=-abs(float(config.get('symbol_daily_loss_r',2.0))):
         return True,f'symbol daily loss limit reached ({day_r:.2f}R)'
     window=float(config.get('drawdown_window_hours',24)); cutoff=now-timedelta(hours=window)
     values=[]

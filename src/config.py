@@ -103,6 +103,22 @@ def _clock(value: object, key: str) -> str:
         raise ValueError(f'risk.{key} must be a UTC time in HH:MM format')
     return value
 
+def _validate_trading_hours(hours):
+    """universe.trading_hours: HH:MM strings and a valid IANA time zone (bad values would stop entries)."""
+    if not hours: return
+    import re
+    from zoneinfo import ZoneInfo
+    pattern=re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
+    try: ZoneInfo(str(hours.get('timezone','UTC')))
+    except Exception as exc: raise ValueError(f'universe.trading_hours.timezone is not a valid time zone: {hours.get("timezone")!r}') from exc
+    windows=[('default',hours)]+[(str(name),window) for name,window in (hours.get('per_symbol') or {}).items()]
+    for name,window in windows:
+        for key in ('start','end'):
+            value=window.get(key,'00:00' if key=='start' else '23:59')
+            if not isinstance(value,str) or not pattern.match(value):
+                raise ValueError(f'universe.trading_hours {name}.{key} must be a quoted HH:MM string, got {value!r}')
+
+
 def load_settings(config_path: str | Path='config.yaml', env_path: str | Path='.env', require_credentials: bool=True) -> Settings:
     path=Path(config_path).resolve()
     if not path.is_file(): raise ValueError(f'Configuration file not found: {path}')
@@ -128,7 +144,7 @@ def load_settings(config_path: str | Path='config.yaml', env_path: str | Path='.
         value=raw.get(key)
         if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or value<=low or (high is not None and value>high):
             raise ValueError(f'risk.{key} must be > {low}' + (f' and <= {high}' if high else ''))
-    for key in ('max_open_positions','max_positions_per_group','max_positions_per_currency','max_positions_per_underlying_group','max_trades_per_symbol_per_day','max_trades_per_day','max_hold_minutes','max_hold_extended_minutes','extend_step_minutes','gating_window','gating_disable_hours','momentum_lookback_bars','stagnation_minutes','move_horizon_minutes','no_entry_before_close_minutes','early_exit_score_threshold','early_exit_ema_fast','early_exit_ema_slow','early_exit_swing_lookback','early_exit_rsi_period','early_exit_roc_period','early_exit_volume_lookback'):
+    for key in ('max_open_positions','max_positions_per_group','max_positions_per_currency','max_positions_per_underlying_group','max_trades_per_day','max_hold_minutes','max_hold_extended_minutes','extend_step_minutes','gating_window','gating_disable_hours','momentum_lookback_bars','stagnation_minutes','move_horizon_minutes','no_entry_before_close_minutes','early_exit_score_threshold','early_exit_ema_fast','early_exit_ema_slow','early_exit_swing_lookback','early_exit_rsi_period','early_exit_roc_period','early_exit_volume_lookback'):
         if type(raw.get(key)) is not int or raw[key]<=0: raise ValueError(f'risk.{key} must be a positive integer')
     if isinstance(raw.get('max_session_gap_hours'),bool) or not isinstance(raw.get('max_session_gap_hours'),(int,float)) or raw['max_session_gap_hours']<=0: raise ValueError('risk.max_session_gap_hours must be positive')
     for key in ('first_target_r','trail_atr_mult','stagnation_min_r','breakeven_cost_multiplier','sl_move_mult','tp_move_mult','early_exit_volume_spike_ratio'):
@@ -140,6 +156,7 @@ def load_settings(config_path: str | Path='config.yaml', env_path: str | Path='.
     if not isinstance(weights,dict) or any(key not in weights or type(weights[key]) is not int or weights[key]<0 for key in ('ema_cross','swing_break','momentum','volume_spike')): raise ValueError('risk.early_exit_weights must define non-negative integer weights for every exit signal')
     if type(raw.get('scale_out_pct')) is not int or not 1<=raw['scale_out_pct']<=99: raise ValueError('risk.scale_out_pct must be an integer from 1 to 99')
     if type(raw['symbol_cooldown_minutes']) is not int or raw['symbol_cooldown_minutes']<0: raise ValueError('risk.symbol_cooldown_minutes must be a non-negative integer')
+    if type(raw.get('max_trades_per_symbol_per_day')) is not int or raw['max_trades_per_symbol_per_day']<0: raise ValueError('risk.max_trades_per_symbol_per_day must be a non-negative integer (0 = no limit)')
     spreads=raw.get('max_spread_points')
     if not isinstance(spreads,dict) or any(not isinstance(v,(int,float)) or v<0 for v in spreads.values()): raise ValueError('risk.max_spread_points must map symbols to non-negative numbers')
     risk=RiskSettings(float(raw['risk_per_trade_pct']),float(raw['daily_loss_limit_pct']),float(raw['weekly_loss_limit_pct']),raw['max_open_positions'],raw['max_positions_per_group'],raw['max_positions_per_currency'],raw['max_positions_per_underlying_group'],raw['symbol_cooldown_minutes'],raw['max_trades_per_symbol_per_day'],float(raw['max_margin_usage_pct']),raw['max_hold_minutes'],float(raw['first_target_r']),int(raw['scale_out_pct']),float(raw['trail_atr_mult']),raw['stagnation_minutes'],float(raw['stagnation_min_r']),raw['momentum_lookback_bars'],float(raw['breakeven_cost_multiplier']),float(raw['min_risk_reward']),float(raw['max_cost_to_target_ratio']),spreads,raw['no_entry_before_close_minutes'],float(raw['max_session_gap_hours']))
@@ -199,6 +216,7 @@ def load_settings(config_path: str | Path='config.yaml', env_path: str | Path='.
     for key in ('cooldown_hours','symbol_daily_loss_r','drawdown_window_hours','rolling_drawdown_pct'):
         value=protection.get(key)
         if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or value<=0: raise ValueError(f'protections.{key} must be positive')
+    _validate_trading_hours(config['universe'].get('trading_hours'))
     history=config['history']
     if not isinstance(history.get('ranges_months'),dict) or any(type(v) is not int or v<=0 for v in history['ranges_months'].values()): raise ValueError('history.ranges_months must map timeframes to positive month counts')
     if not isinstance(history.get('liquid_aliases'),list) or not history['liquid_aliases']: raise ValueError('history.liquid_aliases must be a non-empty list')

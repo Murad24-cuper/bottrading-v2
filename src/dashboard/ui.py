@@ -42,6 +42,10 @@ div[data-testid="stTable"]{overflow-x:auto}
   button[data-baseweb="tab"]{padding-left:.6rem !important;padding-right:.6rem !important}
   h3{font-size:1.1rem !important}
 }
+/* Navigation wraps on small screens instead of being cut off. */
+[data-testid="stButtonGroup"] [role="radiogroup"] { flex-wrap: wrap; row-gap: 6px; }
+/* The invisible auto-refresh component must not take vertical space. */
+[data-testid="stElementContainer"]:has(iframe[title^="streamlit_autorefresh"]) { position: absolute; height: 0; overflow: hidden; margin: 0; }
 </style>
 """
 

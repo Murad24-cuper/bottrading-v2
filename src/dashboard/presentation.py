@@ -14,6 +14,12 @@ STRATEGY_LABELS = {
     'mean_reversion': 'Geri dönüş',
     'breakout': 'Qırılma',
     'volatility_scalp': 'Sürətli',
+    'session_breakout': 'Sessiya qırılması',
+    'opening_range_breakout': 'Açılış diapazonu qırılması',
+    'vwap_reversion': 'VWAP-a qayıdış',
+    'donchian_breakout': 'Donchian qırılması',
+    'ts_momentum': 'Momentum',
+    'index_pullback_200d': 'İndeks geri çəkilməsi (200 gün)',
 }
 CLOSE_REASON_LABELS = {
     'tp': 'Hədəfə çatdı',
@@ -24,7 +30,7 @@ CLOSE_REASON_LABELS = {
     'sl': 'Zərər həddi',
     'momentum_lost': 'Hərəkət zəiflədi',
     'stagnant': 'Yerində sayırdı',
-    'time': 'Vaxt bitdi (20 dəq)',
+    'time': 'Vaxt bitdi',
     'session_close': 'Bazar bağlanır',
     'news': 'Xəbərdən öncə bağlandı',
     'manual': 'Əl ilə bağlandı',
@@ -194,7 +200,11 @@ def direction_label(value: str | None) -> str:
 
 
 def strategy_label(value: str | None) -> str:
-    return STRATEGY_LABELS.get(str(value or '').lower(), 'Digər')
+    name = str(value or '').strip().lower()
+    if not name:
+        return 'Bərpa olunub (MT5-dən)'
+    # Unknown names are shown readable instead of a vague 'Digər'.
+    return STRATEGY_LABELS.get(name, name.replace('_', ' ').capitalize())
 
 
 def close_reason_label(value: str | None) -> str:

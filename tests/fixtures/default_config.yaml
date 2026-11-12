@@ -1,0 +1,368 @@
+# Account mode selects safeguards; real also requires ALLOW_REAL=true in .env.
+account:
+  mode: demo                    # demo | real
+
+# Position sizing and hard trading limits. Session rules are inferred from broker data in UTC.
+risk:
+  risk_per_trade_pct: 0.25       # Equity risk at the stop per entry
+  daily_loss_limit_pct: 3.0      # Stop new trades after this daily equity loss
+  weekly_loss_limit_pct: 8.0     # Stop new trades after this weekly equity loss
+  max_trades_per_day: 150        # Global cap on new trades per UTC day
+  max_open_positions: 20         # Total concurrent positions
+  max_positions_per_group: 6     # Correlation guard per asset group
+  max_positions_per_currency: 3  # Net directional positions per FX/metals currency
+  max_positions_per_underlying_group: 2 # Correlated US indices and other underlying groups
+  max_total_open_risk_pct: 5.0    # Maximum combined stop risk across bot positions and cycle reservations
+  symbol_cooldown_minutes: 0     # 0 = off: a symbol may be traded again right after a close
+  max_trades_per_symbol_per_day: 0 # 0 = no per-symbol daily limit (max_trades_per_day still applies)
+  allow_multiple_positions_per_symbol: true # Several positions on the same symbol; total risk still capped by max_total_open_risk_pct
+  max_group_share_today: 0       # 0 = off (no cap on one asset group's share of today's trades); 0<x<1 caps it after 10 daily trades
+  max_margin_usage_pct: 50       # Maximum projected margin / equity
+  max_hold_minutes: 30           # Default hard holding limit; protected winners may extend
+  max_hold_extended_minutes: 60  # Hard ceiling including protected-profit extensions
+  extend_step_minutes: 10        # Recheck continuation after each extension step
+  extend_requires_scale_out: true # false: a winner may be extended without a partial close (stop moved to breakeven first)
+  first_target_r: 0.8            # Take partial profit after this favorable R multiple
+  scale_out_pct: 50                # Percent to close at first target
+  trail_atr_mult: 1.0             # ATR(M1) distance for trailing stop
+  stagnation_minutes: 10         # Close if price has not progressed enough by this age
+  move_horizon_minutes: 30       # Horizon used to estimate ATR-based target movement
+  stagnation_min_r: 0.2           # Minimum favorable R progress by stagnation_minutes
+  momentum_lookback_bars: 5       # Closed bars used to detect momentum reversal
+  breakeven_cost_multiplier: 1.0  # Include this multiple of estimated round-trip costs
+  min_risk_reward: 1.2           # Minimum net TP / SL reward ratio after costs
+  max_cost_to_target_ratio: 0.3  # Maximum estimated round-trip cost / TP value
+  max_spread_points: {}          # Optional per-symbol spread caps
+  no_entry_before_close_minutes: 60 # Skip a symbol shortly before its next broker session close
+  max_session_gap_hours: 6       # Close owned positions before longer broker session breaks
+  sl_move_mult: 0.8               # ATR(M1)*sqrt(move_horizon_minutes) stop multiplier
+  tp_move_mult: 1.2               # ATR(M1)*sqrt(move_horizon_minutes) target multiplier
+  gating_window: 20               # Closed trades used for expectancy gating
+  gating_disable_hours: 24        # Disable negative strategies/groups
+  early_exit_enabled: true
+  early_exit_score_threshold: 3
+  early_exit_min_r: -0.7
+  early_exit_max_r: -0.2
+  early_exit_ema_fast: 5
+  early_exit_ema_slow: 13
+  early_exit_swing_lookback: 5
+  early_exit_rsi_period: 14
+  early_exit_roc_period: 5
+  early_exit_volume_lookback: 20
+  early_exit_volume_spike_ratio: 1.5
+  early_exit_weights: {ema_cross: 1, swing_break: 1, momentum: 1, volume_spike: 1}
+
+# Broker names vary by XM server and account type. These are search patterns.
+universe:
+  include_groups: [indices, metals]
+  refresh_minutes: 5           # Refresh broker symbol discovery/cache interval
+  tick_freshness_seconds_by_group: {forex: 120, metals: 180, indices: 120, other: 180}
+  exclude_symbols: []
+  exclude_dated_futures: true    # Exclude names ending in month/year contract codes
+  symbol_aliases:
+    GOLD: [GOLDmicro, XAUUSDmicro, GOLD, XAUUSD]
+    SILVER: [SILVERmicro, XAGUSDmicro, SILVER, XAGUSD]
+    EURUSD: [EURUSDmicro, EURUSD.m, EURUSD]
+    GBPUSD: [GBPUSDmicro, GBPUSD.m, GBPUSD]
+    USDJPY: [USDJPYmicro, USDJPY.m, USDJPY]
+    AUDUSD: [AUDUSDmicro, AUDUSD.m, AUDUSD]
+    USDCAD: [USDCADmicro, USDCAD.m, USDCAD]
+    EURJPY: [EURJPYmicro, EURJPY.m, EURJPY]
+    GBPJPY: [GBPJPYmicro, GBPJPY.m, GBPJPY]
+    US30: [US30Cash, US30, US30micro, DJ30]
+    US500: [US500Cash, US500, SPX500, SP500, US500micro]
+    NAS100: [US100Cash, US100, NAS100, USTEC, US100micro]
+    GER40: [GER40Cash, GER40, DAX, GER40micro]
+    OIL: [OIL, WTI, USOIL, OILmicro]
+    BTCUSD: [BTCUSD, BTC, BTCUSDmicro]
+    ETHUSD: [ETHUSD, ETH, ETHUSDmicro]
+    Altcoins_INDX: [Altcoins_INDX]
+    Crypto_10: [Crypto_10]
+  focus_symbols: [GOLD, US500, NAS100, US30]   # Gold + US indices only (forex removed: spread ate 15-30% of short moves)
+  weekend_symbols: [GOLD24-7]
+  weekend_include_open_indices: false
+  trading_hours:                 # New entries only in this window; open positions are always managed
+    enabled: false               # 24h test: compare results by hour in History before narrowing again
+    timezone: America/New_York   # US cash session (DST handled automatically)
+    start: '09:30'
+    end: '16:00'
+    per_symbol:
+      GOLD: {start: '04:00', end: '17:00'}   # London + New York: Baku 13:00-02:00 in winter, 12:00-01:00 in summer
+
+timeframes: [M1, M5, M15]
+magic_number: 20260001
+executor:
+  deviation_points: 20           # Maximum permitted execution deviation
+strategies:
+  trend_pullback:
+    enabled: true
+    groups: [forex, metals, indices]
+    timeframes: [M1, M5, M15, H1]
+    params: {trend_ema_fast: 20, trend_ema_slow: 50, adx_min: 18, adx_min_by_group: {forex: 18, indices: 16, metals: 16}, slope_atr_min: 0.05, pullback_atr: 0.45, stop_atr: 1.5, reward_risk: 1.8}
+  mean_reversion:
+    enabled: true
+    groups: [forex, metals, indices, energy, crypto, stocks]
+    timeframes: [M1, M5, M15]
+    params: {bb_period: 20, bb_std: 2.0, rsi_period: 14, rsi_low: 35, rsi_high: 65, near_level_atr: 1.0, allow_quiet_regime: true, stop_atr: 1.2}
+  breakout:
+    enabled: false               # Disabled: recent demo expectancy was negative
+    groups: [forex, metals, indices, energy, crypto, stocks]
+    timeframes: [M1, M5, M15]
+    params: {range_bars: 20, atr_expansion: 1.0, volume_ratio: 1.0, reward_range: 1.5}
+  volatility_scalp:
+    enabled: true
+    timeframes: [M1, M5, M15]
+    groups: [forex, metals, indices, energy, crypto, stocks]
+    params: {atr_period: 14, atr_percentile: 0.70, percentile_lookback_bars: 7200, target_atr: 0.4, stop_atr: 0.65, max_spread_target_ratio: 0.35}
+  session_breakout:
+    enabled: true
+    groups: [forex, metals, indices, crypto]
+    timeframes: [M15, H1]
+    params: {variant: v1, buf_mult: 0.1, sl_mult: 1.5, tp_mult: 2.0}
+  opening_range_breakout:
+    enabled: true
+    groups: [indices]
+    timeframes: [M15, H1]
+    params: {variant: v1, sl_mult: 1.0, tp_mult: 1.5, use_sma: false}
+  vwap_reversion:
+    enabled: true
+    groups: [forex, metals, indices, crypto]
+    timeframes: [M15, H1]
+    params: {variant: v1, dev_mult: 2.0, sl_mult: 1.5, use_rsi: false}
+  donchian_breakout:
+    enabled: true
+    groups: [forex, metals, indices, crypto]
+    timeframes: [H4, H1, M15]
+    params: {variant: v1, period: 20, sl_mult: 2.0, tp_mult: 4.0}
+  ts_momentum:
+    enabled: true
+    groups: [forex, metals, indices, crypto]
+    timeframes: [H4, H1, M15]
+    params: {variant: v1, lookback: 12, sl_mult: 2.0, tp_mult: 3.0}
+  index_pullback_200d:
+    enabled: true
+    groups: [indices]
+    timeframes: [H1, M15]
+    params: {variant: v1, sl_mult: 1.5, tp_mult: 2.5}
+loop:
+  interval_seconds: 15            # Period target; work time is subtracted from this interval
+scanner:
+  max_seconds_per_cycle: 12
+  max_candidates: 10
+  candle_count: 250
+  min_score: 0.0
+  min_confidence: 0.55
+  target_open_positions: 10     # Scanner work adapts below this target; no forced trades
+  full_rotation_seconds: 60     # Every active focus symbol receives full analysis within this window
+  require_mtf_agreement: true
+  mtf_min_agree: 2               # Require this many agreeing closed-bar timeframes
+  mtf_ema_fast: 5               # Fast EMA for M1/M5/M15 direction agreement
+  mtf_ema_slow: 13              # Slow EMA for M1/M5/M15 direction agreement
+  max_spread_vs_median: 1.8
+  spread_median_lookback_hours: 24
+  spread_median_cache_seconds: 300
+  extend_min_score: 1.0          # Continuation score (0, 0.5 or 1) required to extend a protected winner
+  top_movers: 40                 # Full strategy analysis runs only on top movers
+  movement_timeframe_minutes: 30 # Short-term movement measurement for ranking
+  max_spread_volatility_ratio: 1.0  # Skip when spread exceeds one ATR; target cost gate remains stricter
+  spread_volatility_horizon_minutes: 20 # Compare spread against 20-minute expected movement
+  min_movers_per_group: 5        # Round-robin minimum when candidates are available
+  repeat_penalty: 0.15           # Expected-R penalty per underlying trade today
+  group_repeat_penalty: 0.05     # Expected-R penalty per asset-group trade today
+  timeframe_point_sizes: {}     # Optional symbol point sizes for candle spread pricing
+live:
+  mode: trade                   # shadow = record decisions only; trade = submit orders
+  normal_trading_disabled: true # Part 7 Case B: no tested strategy currently qualifies after costs
+  strategies: [trend_pullback, mean_reversion, breakout, volatility_scalp, session_breakout, opening_range_breakout, vwap_reversion, donchian_breakout, ts_momentum, index_pullback_200d]
+  max_cycle_errors: 5           # Disable new entries after this many consecutive errors
+  equity_snapshot_seconds: 30
+  heartbeat_seconds: 10
+  command_ttl_seconds: 60        # Dashboard commands expire after this many seconds
+health:
+  stale_ticks_seconds: 120       # Reconnect if all open-market symbols have stale ticks
+  reconnect_failures_before_pause: 3 # Disable entries after repeated MT5 health failures
+  min_margin_level_pct: 150      # Block new entries and alert below this margin level
+  order_rejections_before_alert: 3 # Alert on repeated failed order submissions
+  max_memory_mb: 1500
+  warn_disk_free_gb: 5
+  stop_downloads_free_gb: 2
+schedule:
+  hourly_minute_utc: 0
+  daily_rollover_hour_utc: 0
+  daily_backup_keep: 7
+  log_retention_days: 14
+  weekly_day_utc: 6
+  weekly_hour_utc: 2
+notify:
+  big_loss_usd: 5.0              # Notify on a single larger net loss
+  daily_summary_utc: "21:00"     # Daily summary time in UTC
+  weekly_summary_utc: "21:00"    # Sunday weekly learning report time in UTC
+  rate_limit_minutes: 5          # Per-event notification cooldown
+news:
+  enabled: true
+  blackout_minutes_before: 15
+  blackout_minutes_after: 15
+  stale_after_hours: 24          # Use blanket window only when both feeds are unavailable for a day
+  refresh_hours: 6               # Public calendar cache refresh interval
+  calendar_filename: calendar_events.csv
+cost_model:
+  enabled: true
+  lookback_hours: 24           # Use the same UTC hour over the trailing day
+  sample_interval_seconds: 60  # Record one spread sample per symbol/timeframe per minute
+  min_samples_per_cell: 5      # Uncalibrated hour cells refuse new entries
+  max_stop_ratio: 0.10         # Round-trip costs must stay below 10% of stop risk
+  slippage_points: 1.0
+  one_bar_delay: false         # Optional adverse one-bar delay remains off until calibrated
+  default_commission_per_lot: 0.0
+protections:
+  enabled: true
+  symbol_pauses_enabled: false   # Off: no 24h pause of a symbol after 3 losses or -2R in a day (rolling drawdown still applies)
+  consecutive_losses: 3
+  cooldown_hours: 24
+  symbol_daily_loss_r: 2.0
+  drawdown_window_hours: 24
+  rolling_drawdown_pct: 2.0
+dashboard:
+  real_balance_default: 100      # Starting value for the small-account simulation
+  real_risk_pct_default: 1.0     # Planned risk percent used in that simulation
+  chart_refresh_seconds: 2       # Open positions: charts, live analysis and early-exit re-check every N s between cycles (0 = off)
+backup:
+  enabled: true                  # Daily copy of data/bot.db to data/backups (trade history, brain outcomes)
+  keep_days: 7
+paths:
+  data_dir: data                 # Relative to project root unless overridden in .env
+  logs_dir: logs                 # Relative to project root unless overridden in .env
+db:
+  signals_retention_days: 7      # Keep recent signals for detailed dashboard views
+  events_retention_days: 30      # Keep operational events for 30 days
+  equity_retention_days: 30      # Retain full resolution snapshots for 30 days
+  equity_downsample_minutes: 5   # Older snapshots are reduced to one per interval
+  backup_keep_days: 7            # Number of daily database backups to retain
+  vacuum_weekday_utc: 6          # Sunday UTC, while the bot is idle
+supervisor:
+  hang_seconds: 90               # Restart a live child with a stale heartbeat
+  restart_backoff_seconds: [10, 30, 60] # Delay before successive crash restarts
+  max_restarts_per_hour: 5       # Stop after this many restarts in one hour
+  restart_window_minutes: 60     # Sliding restart limit window
+mt5:
+  call_timeout_seconds: 20       # Maximum wait for one MT5 package call
+  auto_start_terminal: false     # Terminal bağlıdırsa onu avtomatik açma; əvvəlcə prosesi yoxla
+  init_timeout_seconds: 30       # mt5.initialize timeout (saniyə)
+  max_reconnect_attempts: 5      # Maksimum reconnect cəhdləri sayı (artan gözləmə ilə)
+confluence:
+  enabled: false                 # Observation only until evidence supports activation
+  rules: []                       # Optional entry filters; disabled by default
+brain:
+  enabled: false                  # Live use remains disabled until the acceptance gate passes
+  shadow: true                    # Record analysis without changing current trade decisions
+  min_checklist: 0.55
+  min_probability: 0.55
+  min_ev_r: 0.05
+  k_neighbors: 300
+  kelly_fraction: 0.25
+  max_symbols: 15                # Ten weekday focus symbols plus five discovered weekend symbols
+  max_reference_situations: 1500000
+  query_exclude_same_symbol_days: 1
+  checklist:
+    weights: {trend: 1.0, location: 1.0, pattern: 1.0, candle: 1.0, fibonacci: 0.7, levels: 1.0, momentum: 1.0, volatility: 0.8, session: 0.5, context: 0.5}
+  acceptance: {min_trades: 500, min_profit_factor: 1.1, min_symbols: 7, calibration_error: 0.05}
+  universe_quotas: {forex: 5, indices: 4, stocks: 0, crypto: 2, metals: 2, energy: 0}
+  pca_components: 28
+  max_reference_memory_mb: 800
+  ood_percentile: 99.0            # Validation distance percentile; farther live situations are "unfamiliar"
+  loss_streak_base_risk: 3        # After this many consecutive losses, brain sizing falls back to base risk
+  real_risk:                      # Brain dynamic risk bounds on a REAL account (never above locked 0.25%)
+    brain_min_risk_pct: 0.1
+    brain_max_risk_pct: 0.25
+  purge_gap_minutes: 20
+  sample_every_minutes: 30
+  rounds: 5
+  weekend_memory_file: weekend_reference.parquet
+  retrain_day_utc: 6
+demo_risk:                        # Used ONLY when MT5 reports a DEMO account (virtual money)
+  risk_per_trade_pct: 1.0         # Fixed risk per trade: 1% = $100 on $10,000 (all modes: main, weekend, exploration)
+  daily_loss_limit_pct: 10.0      # Stop new entries after -10% in a UTC day
+  weekly_loss_limit_pct: 25.0     # Stop new entries after -25% in a week
+  brain_min_risk_pct: 1.0         # Brain dynamic risk range once it is live (gate PASS)
+  brain_max_risk_pct: 2.0         # Hard DEMO ceiling is 2% (src/risk_profile.py)
+  rolling_drawdown_pct: 6.0       # Pause all entries for 24h after a 6% equity drop in 24h (REAL keeps protections.rolling_drawdown_pct 2%); ceiling 10%
+  min_lot_max_risk_pct: 3.0       # Small balance: if 1% is below the broker minimum lot, trade the minimum lot when it risks <=3% (hard ceiling 5%; REAL never)
+self_learning:
+  bandit_enabled: true       # Thompson sampling changes scan priority only; risk settings remain locked
+  bandit_history_trades: 1000 # Recent closed main-mode outcomes used per weekly scan priority update
+  retrain_hour_utc: 2
+  live_drift_window: 100
+  live_max_calibration_error: 0.1
+  live_min_expectancy_r: 0.0
+history:
+  data_dir: data/history
+  incremental_refresh_enabled: true
+  incremental_timeframes: [M1, M5, M15, H1, H4, D1]
+  incremental_batch_days: {M1: 1, M5: 7, M15: 14, H1: 30, H4: 180, D1: 365}
+  download_chunk_days: {M1: 7, M5: 28, M15: 90, H1: 180, H4: 365, D1: 730}
+  incremental_refresh_every_cycles: 1 # One bounded symbol/timeframe request per live cycle
+  incremental_budget_seconds: 1.5 # MT5 request size is bounded to the configured batch size
+  ranges_months: {M1: 12, M5: 36, M15: 36, H1: 60, H4: 120, D1: 240}
+  weekend_ranges_months: {M1: 6, M5: 24, M15: 24, H4: 60, D1: 120}
+  weekend_timeframes: [M1, M5, M15, H4, D1]
+  max_storage_gb: 5
+  max_bars_per_request: 80000 # Stay below the MT5 terminal's history response ceiling
+  liquid_aliases: [EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD, US500, NAS100, US30, GER40, GOLD, BTCUSD, ETHUSD, GOLD24-7, Altcoins_INDX, Crypto_10]
+weekend:
+  enabled: false                 # Off: only gold + US indices on weekdays
+  risk_per_trade_pct: 0.15
+  max_open_positions: 3
+  move_horizon_minutes: 60
+  max_hold_extended_minutes: 120
+demo_exploration:
+  enabled: true
+  risk_per_trade_pct: 0.1
+  max_open_positions: 3
+  max_trades_per_day: 40
+  min_confidence: 0.45
+  mtf_min_agree: 2
+  min_risk_reward: 1.0
+  max_cost_to_target_ratio: 0.45
+  stop_mode: horizon              # horizon = SL/TP sized to the short holding time (M1 ATR x sqrt(minutes)); strategy = strategy's own wide levels
+  move_horizon_minutes: 30        # Horizon for exploration SL/TP; matches risk.max_hold_minutes (30)
+backtest:
+  start_equity: 1000
+  commission_per_lot_per_side: 0.0
+  slippage_points: 1.0
+  fallback_spread_points: 15.0
+  in_sample_pct: 0.7
+  walk_forward_optimize_months: 6
+  walk_forward_test_months: 2
+  signal_lookback_bars: 120
+  parameter_grid:
+    trend_pullback: {adx_min: [18, 22], reward_risk: [1.5, 2.0]}
+    mean_reversion: {rsi_low: [25, 30], rsi_high: [70, 75]}
+    breakout: {range_bars: [15, 20], volume_ratio: [1.1, 1.3]}
+    volatility_scalp: {target_atr: [0.3, 0.4], max_spread_target_ratio: [0.15, 0.2]}
+db_path: data/bot.db
+runtime:
+  location: local               # local | server; a mismatch refuses bot startup
+time:
+  default_server_utc_offset_hours: 2
+
+# Profile presets (off by default, used for rehearsal / staged rollout)
+profiles:
+  micro_50:
+    enabled: false # Rehearsal mode; off by default; never auto-enabled
+    account:
+      mode: demo
+      assumed_balance: 50.0
+    risk:
+      risk_per_trade_pct: 0.25 # Feasible risk per trade from docs/MIN_LOT.md ($0.125 on $50; strictly respects 0.25% locked ceiling)
+      max_total_open_risk_pct: 3.0 # Within 5.0% locked ceiling
+      daily_loss_limit_pct: 3.0
+      weekly_loss_limit_pct: 6.0
+      max_open_positions: 4
+      max_positions_per_group: 3
+      max_positions_per_currency: 2
+    universe:
+      include_groups: [forex, metals]
+      focus_symbols: [EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD, EURJPY, GBPJPY, GOLD]
+      weekend_symbols: [GOLD24-7]
+      exclude_symbols: [US500Cash, US100Cash, US30Cash, GER40Cash, UK100Cash, BTCUSD, ETHUSD, Altcoins_INDX, Crypto_10]
+    comment: "Prepared for 2-week XM Micro $50 rehearsal. Excludes indices and crypto where min lot dollar risk ($2-$15) exceeds the $0.50 risk ceiling."

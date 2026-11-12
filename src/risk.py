@@ -103,10 +103,12 @@ def check_trade_allowed(signal, account, open_positions, pnl_today, pnl_week, se
     if float(pnl_week)+floating<=-balance*weekly_limit/100: return False,'weekly loss limit reached'
     if len(open_positions)>=risk['max_open_positions']: return False,'maximum open positions reached'
     if sum(_group(p)==symbol_group for p in open_positions)>=risk['max_positions_per_group']: return False,'maximum positions for asset group reached'
-    if any(_value(p,'symbol')==signal.symbol for p in open_positions): return False,'symbol already has open position'
-    if any(underlying_key(_value(p,'symbol',''))==underlying_key(signal.symbol) for p in open_positions): return False,'underlying already has open position'
+    one_per_symbol=not risk.get('allow_multiple_positions_per_symbol',False)
+    if one_per_symbol and any(_value(p,'symbol')==signal.symbol for p in open_positions): return False,'symbol already has open position'
+    if one_per_symbol and any(underlying_key(_value(p,'symbol',''))==underlying_key(signal.symbol) for p in open_positions): return False,'underlying already has open position'
     if symbol_cooldown: return False,'symbol cooldown active'
-    if int(symbol_trades_today)>=risk['max_trades_per_symbol_per_day']: return False,'maximum trades for symbol today reached'
+    symbol_limit=int(risk.get('max_trades_per_symbol_per_day',0) or 0)   # 0 = no per-symbol daily limit
+    if symbol_limit>0 and int(symbol_trades_today)>=symbol_limit: return False,'maximum trades for symbol today reached'
     if int(trades_today)>=int(risk.get('max_trades_per_day',150)): return False,'maximum trades today reached'
     group_share=float(risk.get('max_group_share_today',0) or 0)
     # 0 (or >= 1) disables the rule; only 0 < share < 1 limits one group's share of today's trades.
@@ -116,7 +118,7 @@ def check_trade_allowed(signal, account, open_positions, pnl_today, pnl_week, se
     for position in open_positions:
         group=_value(position,'exposure_group') or underlying_group(_value(position,'symbol',''),_value(position,'asset_group') or _group(position))
         underlying=_value(position,'underlying') or underlying_key(_value(position,'symbol',''))
-        if candidate_group and group==candidate_group and underlying==candidate_underlying: return False,'underlying already has open position'
+        if one_per_symbol and candidate_group and group==candidate_group and underlying==candidate_underlying: return False,'underlying already has open position'
     if candidate_group:
         group_count=sum((_value(p,'exposure_group') or underlying_group(_value(p,'symbol',''),_value(p,'asset_group') or _group(p)))==candidate_group for p in open_positions)
         if group_count>=risk.get('max_positions_per_underlying_group',2): return False,'maximum positions for underlying group reached'

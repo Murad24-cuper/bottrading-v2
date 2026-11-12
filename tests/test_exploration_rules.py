@@ -178,3 +178,9 @@ def test_exploration_caps_enforced(tmp_path, monkeypatch):
     res = bot._candidate(candidate, datetime.now(timezone.utc), True)
     assert res is False
     assert any('max 1 open exploration trade for symbol' in str(arg) for call in bot._signal_update.call_args_list for arg in call[0])
+
+    # Case 3: several positions per symbol allowed in config -> the per-symbol rule does not apply
+    settings.config['risk']['allow_multiple_positions_per_symbol'] = True
+    bot._signal_update.reset_mock()
+    bot._candidate(candidate, datetime.now(timezone.utc), True)
+    assert not any('max 1 open exploration trade for symbol' in str(arg) for call in bot._signal_update.call_args_list for arg in call[0])

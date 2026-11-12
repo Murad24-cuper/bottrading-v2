@@ -13,18 +13,20 @@ risk:
   max_positions_per_currency: 3  # Net directional positions per FX/metals currency
   max_positions_per_underlying_group: 2 # Correlated US indices and other underlying groups
   max_total_open_risk_pct: 5.0    # Maximum combined stop risk across bot positions and cycle reservations
-  symbol_cooldown_minutes: 20    # Fixed cooldown; never shortened by scanner vacancies
-  max_trades_per_symbol_per_day: 4 # Maximum daily opens per underlying (UTC day)
+  symbol_cooldown_minutes: 0     # 0 = off: a symbol may be traded again right after a close
+  max_trades_per_symbol_per_day: 0 # 0 = no per-symbol daily limit (max_trades_per_day still applies)
+  allow_multiple_positions_per_symbol: true # Several positions on the same symbol; total risk still capped by max_total_open_risk_pct
   max_group_share_today: 0       # 0 = off (no cap on one asset group's share of today's trades); 0<x<1 caps it after 10 daily trades
   max_margin_usage_pct: 50       # Maximum projected margin / equity
-  max_hold_minutes: 20           # Default hard holding limit; protected winners may extend
+  max_hold_minutes: 30           # Default hard holding limit; protected winners may extend
   max_hold_extended_minutes: 60  # Hard ceiling including protected-profit extensions
   extend_step_minutes: 10        # Recheck continuation after each extension step
+  extend_requires_scale_out: true # false: a winner may be extended without a partial close (stop moved to breakeven first)
   first_target_r: 0.8            # Take partial profit after this favorable R multiple
   scale_out_pct: 50                # Percent to close at first target
   trail_atr_mult: 1.0             # ATR(M1) distance for trailing stop
-  stagnation_minutes: 6          # Close if price has not progressed enough by this age
-  move_horizon_minutes: 10       # Horizon used to estimate ATR-based target movement
+  stagnation_minutes: 10         # Close if price has not progressed enough by this age
+  move_horizon_minutes: 30       # Horizon used to estimate ATR-based target movement
   stagnation_min_r: 0.2           # Minimum favorable R progress by stagnation_minutes
   momentum_lookback_bars: 5       # Closed bars used to detect momentum reversal
   breakeven_cost_multiplier: 1.0  # Include this multiple of estimated round-trip costs
@@ -52,9 +54,9 @@ risk:
 
 # Broker names vary by XM server and account type. These are search patterns.
 universe:
-  include_groups: [forex, metals]
+  include_groups: [indices, metals]
   refresh_minutes: 5           # Refresh broker symbol discovery/cache interval
-  tick_freshness_seconds_by_group: {forex: 120, metals: 180, other: 180}
+  tick_freshness_seconds_by_group: {forex: 120, metals: 180, indices: 120, other: 180}
   exclude_symbols: []
   exclude_dated_futures: true    # Exclude names ending in month/year contract codes
   symbol_aliases:
@@ -76,9 +78,16 @@ universe:
     ETHUSD: [ETHUSD, ETH, ETHUSDmicro]
     Altcoins_INDX: [Altcoins_INDX]
     Crypto_10: [Crypto_10]
-  focus_symbols: [EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD, EURJPY, GBPJPY, GOLD]
+  focus_symbols: [GOLD, US500, NAS100, US30, SILVER] # Gold + US indices only (forex removed: spread ate 15-30% of short moves)
   weekend_symbols: [GOLD24-7]
   weekend_include_open_indices: false
+  trading_hours:                 # New entries only in this window; open positions are always managed
+    enabled: false               # 24h test: compare results by hour in History before narrowing again
+    timezone: America/New_York   # US cash session (DST handled automatically)
+    start: '09:30'
+    end: '16:00'
+    per_symbol:
+      GOLD: {start: '04:00', end: '17:00'}   # London + New York: Baku 13:00-02:00 in winter, 12:00-01:00 in summer
 
 timeframes: [M1, M5, M15]
 magic_number: 20260001
@@ -152,7 +161,7 @@ scanner:
   max_spread_vs_median: 1.8
   spread_median_lookback_hours: 24
   spread_median_cache_seconds: 300
-  extend_min_score: 0.7          # Continuation score required to extend a protected winner
+  extend_min_score: 1.0          # Continuation score (0, 0.5 or 1) required to extend a protected winner
   top_movers: 40                 # Full strategy analysis runs only on top movers
   movement_timeframe_minutes: 30 # Short-term movement measurement for ranking
   max_spread_volatility_ratio: 1.0  # Skip when spread exceeds one ATR; target cost gate remains stricter
@@ -207,6 +216,7 @@ cost_model:
   default_commission_per_lot: 0.0
 protections:
   enabled: true
+  symbol_pauses_enabled: false   # Off: no 24h pause of a symbol after 3 losses or -2R in a day (rolling drawdown still applies)
   consecutive_losses: 3
   cooldown_hours: 24
   symbol_daily_loss_r: 2.0
@@ -215,7 +225,7 @@ protections:
 dashboard:
   real_balance_default: 100      # Starting value for the small-account simulation
   real_risk_pct_default: 1.0     # Planned risk percent used in that simulation
-  chart_refresh_seconds: 15      # Bot writes open-position price charts for the dashboard (0 = off)
+  chart_refresh_seconds: 2       # Open positions: charts, live analysis and early-exit re-check every N s between cycles (0 = off)
 backup:
   enabled: true                  # Daily copy of data/bot.db to data/backups (trade history, brain outcomes)
   keep_days: 7
@@ -270,7 +280,7 @@ brain:
   weekend_memory_file: weekend_reference.parquet
   retrain_day_utc: 6
 demo_risk:                        # Used ONLY when MT5 reports a DEMO account (virtual money)
-  risk_per_trade_pct: 1.0         # Fixed risk per trade: 1% = $100 on $10,000 (all modes: main, weekend, exploration)
+  risk_per_trade_pct: 2.0         # Fixed risk per trade: 1% = $100 on $10,000 (all modes: main, weekend, exploration)
   daily_loss_limit_pct: 10.0      # Stop new entries after -10% in a UTC day
   weekly_loss_limit_pct: 25.0     # Stop new entries after -25% in a week
   brain_min_risk_pct: 1.0         # Brain dynamic risk range once it is live (gate PASS)
@@ -299,7 +309,7 @@ history:
   max_bars_per_request: 80000 # Stay below the MT5 terminal's history response ceiling
   liquid_aliases: [EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD, US500, NAS100, US30, GER40, GOLD, BTCUSD, ETHUSD, GOLD24-7, Altcoins_INDX, Crypto_10]
 weekend:
-  enabled: true
+  enabled: false                 # Off: only gold + US indices on weekdays
   risk_per_trade_pct: 0.15
   max_open_positions: 3
   move_horizon_minutes: 60
@@ -313,6 +323,8 @@ demo_exploration:
   mtf_min_agree: 2
   min_risk_reward: 1.0
   max_cost_to_target_ratio: 0.45
+  stop_mode: horizon              # horizon = SL/TP sized to the short holding time (M1 ATR x sqrt(minutes)); strategy = strategy's own wide levels
+  move_horizon_minutes: 30        # Horizon for exploration SL/TP; matches risk.max_hold_minutes (30)
 backtest:
   start_equity: 1000
   commission_per_lot_per_side: 0.0

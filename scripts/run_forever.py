@@ -225,12 +225,20 @@ def main() -> int:
             try: signal.signal(sig, on_stop_signal)
             except (ValueError, OSError): pass
 
+    restart_path = data_dir / 'restart.request'
+    def consume_restart_request() -> bool:
+        if not restart_path.exists(): return False
+        try: restart_path.unlink()
+        except OSError: pass
+        return True
+
     try:
         return run_restart_supervisor(
             run_child, should_stop, emit,
             backoff['restart_backoff_seconds'],
             backoff['max_restarts_per_hour'],
             int(backoff['restart_window_minutes']) * 60,
+            restart_requested=consume_restart_request,
         )
     finally:
         if child and child.poll() is None:

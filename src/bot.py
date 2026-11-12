@@ -66,7 +66,7 @@ class TradingBot:
         self.notifier=TelegramNotifier(rate_limit_minutes=notify_cfg.get('rate_limit_minutes',5))
         self.telegram_commands=TelegramCommandPoller(self.db,ttl_seconds=int(cfg.get('live',{}).get('command_ttl_seconds',60)))
         self._health_failures=0; self._entries_health_blocked=False; self._trade_allowed=False; self._last_daily_summary=''; self._last_maintenance_day=''
-        self._data_dir=data_dir; self._brain_drift_checked=0.0; self._charts_written=-1e9; self._backup_day=None
+        self._data_dir=data_dir; self._brain_drift_checked=0.0; self._charts_written=-1e9; self._backup_day=None; self._exits_reviewed=-1e9
         self._protection_notified: set = set()
         self._history_refresh_cycle=0
         self._last_notified_trade_id=self.db.latest_trade_id() if hasattr(self.db,'latest_trade_id') else 0
@@ -317,6 +317,14 @@ class TradingBot:
                     results=self.executor.close_all('kill')
                     failed=[r.message for r in results if not r.success]
                     if failed: raise RuntimeError('; '.join(failed))
+                elif action=='restart':
+                    # Apply new config.yaml: exit cleanly; the supervisor sees restart.request and starts us again.
+                    Path(self._data_dir).joinpath('restart.request').write_text('dashboard settings\n',encoding='utf-8')
+                    self._stop_after_cycle=True
+                elif action.startswith('close_position:'):
+                    ticket=int(action.split(':',1)[1])
+                    result=self.executor.close_position(ticket,'manual')
+                    if not result.success: raise RuntimeError(result.message)
                 elif action=='pause':
                     (self.settings.root/'STOP').write_text('PAUSE\n',encoding='utf-8')
                 elif action=='resume':
@@ -469,9 +477,20 @@ class TradingBot:
         try:
             from .position_charts import write_position_charts
             rows={int(row['ticket']):row for row in self.db.get_open_trades()} if hasattr(self.db,'get_open_trades') else {}
-            write_position_charts(self.client.mt5,self._owned_positions(),self._data_dir,rows)
+            management=self._management_settings(datetime.now(timezone.utc))
+            write_position_charts(self.client.mt5,self._owned_positions(),self._data_dir,rows,
+                                  config=management.config,max_hold_minutes=getattr(management.risk,'max_hold_minutes',None))
         except Exception as exc:
             log.debug('Position chart snapshot skipped: %s',exc)
+    def _review_exits(self):
+        """Once a minute: check what the price did after the bot's own early/time exits (best effort)."""
+        if self.monotonic()-self._exits_reviewed<60 or not hasattr(self.db,'get_exits_to_review'): return
+        self._exits_reviewed=self.monotonic()
+        try:
+            from .exit_review import review_exits
+            review_exits(self.db,self.client.mt5,review_minutes=int(self.settings.config.get('risk',{}).get('exit_review_minutes',30)))
+        except Exception as exc:
+            log.debug('Exit review skipped: %s',exc)
     def _owned_positions(self):
         mt5=self.client.mt5
         return [p for p in (mt5.positions_get() or []) if int(p.magic)==self.settings.magic_number]
@@ -544,7 +563,8 @@ class TradingBot:
             live_open_exp=max(self.db.count_mode_trades_since('exploration',now,open_only=True),len(exp_positions))
             if live_open_exp>=max_exp:
                 self._signal_update(candidate,False,f'max open exploration positions cap ({max_exp}) reached'); return False
-            if any(str(getattr(p,'symbol',''))==candidate.symbol for p in exp_positions):
+            one_per_symbol=not bool(self.settings.config.get('risk',{}).get('allow_multiple_positions_per_symbol',False))
+            if one_per_symbol and any(str(getattr(p,'symbol',''))==candidate.symbol for p in exp_positions):
                 self._signal_update(candidate,False,f'max 1 open exploration trade for symbol {candidate.symbol} reached'); return False
         weekend_gate=self.db.weekend_gate(now,20,7) if weekend and hasattr(self.db,'weekend_gate') else {}
         if weekend_gate.get('disabled_until') and weekend_gate['disabled_until']>now.isoformat():
@@ -632,7 +652,7 @@ class TradingBot:
                 open_positions.append(reservation['position']); reserved_margin+=reservation['margin']
         pnl_today,pnl_week=self._pnl_periods(now)
         day_start=now.replace(hour=0,minute=0,second=0,microsecond=0)
-        cooldown_active=self.db.underlying_closed_since(candidate.symbol,now-timedelta(minutes=self.settings.risk.symbol_cooldown_minutes),self.settings.magic_number) if hasattr(self.db,'underlying_closed_since') else self.db.symbol_closed_since(candidate.symbol,now-timedelta(minutes=self.settings.risk.symbol_cooldown_minutes),self.settings.magic_number)
+        cooldown_active=False if int(self.settings.risk.symbol_cooldown_minutes)<=0 else self.db.underlying_closed_since(candidate.symbol,now-timedelta(minutes=self.settings.risk.symbol_cooldown_minutes),self.settings.magic_number) if hasattr(self.db,'underlying_closed_since') else self.db.symbol_closed_since(candidate.symbol,now-timedelta(minutes=self.settings.risk.symbol_cooldown_minutes),self.settings.magic_number)
         symbol_trades_today=self.db.count_underlying_trades_since(candidate.symbol,day_start,self.settings.magic_number) if hasattr(self.db,'count_underlying_trades_since') else self.db.count_symbol_trades_since(candidate.symbol,day_start,self.settings.magic_number)
         session_closing=False
         if service and hasattr(service,'next_session_close'):
@@ -775,7 +795,7 @@ class TradingBot:
         health_ok=self._health(now)
         self.executor.sync_positions(); getattr(self.executor,'enforce_adverse_move_exit',lambda *_:None)(self.settings); getattr(self.executor,'enforce_news_positions',lambda *_:[])(getattr(self.scanner,'_news_events',[]),now); self.executor.enforce_time_stop(self._management_settings(now)); self.executor.enforce_session_close(self.settings,now)
         self._notify_closed_losses()
-        self._write_position_charts()
+        self._write_position_charts(); self._review_exits()
         self._backup_database(now)
         pnl_today,pnl_week=self._pnl_periods(now)
         open_rows={int(row['ticket']):row for row in self.db.get_open_trades()}
@@ -910,10 +930,25 @@ class TradingBot:
             try: self._set_status('error')
             except Exception: pass
             return CycleResult(True,float(self.settings.config['loop']['interval_seconds']))
+    def _fast_watch(self):
+        """Between full cycles: refresh position charts/analysis and re-check the early-exit rule.
+
+        Runs in the bot's own thread (never concurrently with a cycle) and only while positions are open."""
+        if self._connection_down or not self._started or self.executor is None: return
+        try:
+            if not self._owned_positions(): return
+        except Exception: return
+        if bool(self.settings.config.get('risk',{}).get('early_exit_enabled',True)) and hasattr(self.executor,'enforce_adverse_move_exit'):
+            try: self.executor.enforce_adverse_move_exit(self.settings)
+            except Exception as exc: log.debug('Fast early-exit check skipped: %s',exc)
+        self._write_position_charts()
     def _heartbeat_sleep(self,seconds):
         remaining=float(seconds); heartbeat=max(1,int(self.live['heartbeat_seconds']))
+        fast=float(self.settings.config.get('dashboard',{}).get('chart_refresh_seconds',15) or 0)
+        if fast>0: heartbeat=max(.5,min(heartbeat,fast))
         while remaining>0 and not self.stop_event:
             span=min(remaining,heartbeat); self.sleep_fn(span); remaining-=span
+            if fast>0 and remaining>0 and not self.stop_event: self._fast_watch()
             if not self.stop_event:
                 try: self._set_status('error' if self._connection_down or (self.last_error and not self.trading_disabled) else ('managing_only' if self.trading_disabled else 'running'))
                 except Exception: pass

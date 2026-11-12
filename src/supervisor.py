@@ -87,6 +87,7 @@ def run_restart_supervisor(
     window_seconds: int = 3600,
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.time,
+    restart_requested: Callable[[], bool] = lambda: False,
 ) -> int:
     """Restart unexpected exits with bounded backoff and a sliding hourly cap."""
     global _notifier
@@ -103,6 +104,10 @@ def run_restart_supervisor(
         if stop_requested():
             log_event('INFO', 'bot exiting reason=dashboard stop command')
             return 0
+        if restart_requested():
+            # Dashboard "save settings": restart at once, not counted as a crash.
+            log_event('INFO', 'Restarting bot to apply new settings')
+            continue
         if return_code != 0:
             if _notifier is None: _notifier=TelegramNotifier()
             _notifier.send('crash',f'💥 Bot prosesi gözlənilmədən dayandı · çıxış kodu {return_code}.')

@@ -1,4 +1,6 @@
-"""Single-user local Streamlit dashboard backed solely by SQLite."""
+"""Trading-bot dashboard: overview, positions, history, settings, brain and system pages.
+
+Reads SQLite and local files only; actions go to the bot as queued commands."""
 from __future__ import annotations
 from datetime import datetime,timezone,time as dt_time,timedelta
 from pathlib import Path
@@ -17,10 +19,12 @@ from src.dashboard.readiness import readiness_checks, simulate_small_account
 from src.paths import project_paths
 from src.parquet_compat import assert_fastparquet_available
 from src.dashboard import ui
+from src.dashboard import history as trade_history
+from src.dashboard import settings_editor
 from src.dashboard.overview import brain_overview, risk_overview, runtime_label, stop_state
 from src.dashboard.presentation import (AZ_TZ, close_reason_label,
                                         direction_label, format_duration,
-                                        feature_label, format_money, local_time,
+                                        format_money, local_time,
                                         strategy_label, translate_message)
 assert_fastparquet_available()
 load_dotenv(ROOT/'.env',override=False)
@@ -134,6 +138,9 @@ def _money_color(value):
     number=float(value or 0)
     return 'color: #16a34a; font-weight: 600' if number>0 else 'color: #dc2626; font-weight: 600' if number<0 else 'color: #64748b'
 
+PAGES=['🏠 İcmal','📈 Mövqelər','📋 Tarixçə','⚙️ Ayarlar','🧠 Beyin','🛠 Sistem']
+PAGE_KEYS=['overview','positions','history','settings','brain','system']
+GROUP_LABELS={'forex':'Valyuta','metals':'Metallar','indices':'İndekslər','energy':'Enerji','crypto':'Kripto','stocks':'Səhmlər','other':'Digər'}
 
 
 def _table(frame,phone=False,phone_columns=None,money=None):
@@ -141,7 +148,168 @@ def _table(frame,phone=False,phone_columns=None,money=None):
     if phone and phone_columns: frame=frame[[c for c in phone_columns if c in frame.columns]]
     if money and money in frame.columns:
         frame=frame.style.format({money:lambda value:format_money(value,signed=True)}).map(_money_color,subset=[money])
-    st.dataframe(frame,use_container_width=True,hide_index=True)
+    st.dataframe(frame,width='stretch',hide_index=True)
+
+
+def _send(command,ok_text):
+    """Queue a bot command and remember the outcome for the next rerun."""
+    try:
+        queries.enqueue_command(command,DB_PATH,ttl_seconds=_command_ttl())
+        st.session_state.action_message=ok_text; st.session_state.action_level='success'
+    except Exception as exc:
+        st.session_state.action_message=f'Əmr göndərilmədi: {translate_message(exc)}'; st.session_state.action_level='error'
+
+
+def _flash():
+    if st.session_state.get('action_message'):
+        message=st.session_state.pop('action_message'); level=st.session_state.pop('action_level','info')
+        getattr(st,level if level in {'success','warning','error','info'} else 'info')(message)
+
+
+def _page():
+    """Active page, remembered in the URL (?page=...) so a bookmark opens it directly."""
+    current=st.query_params.get('page','overview')
+    index=PAGE_KEYS.index(current) if current in PAGE_KEYS else 0
+    choice=st.segmented_control('Bölmə',PAGES,default=PAGES[index],key='nav',label_visibility='collapsed')
+    key=PAGE_KEYS[PAGES.index(choice)] if choice in PAGES else PAGE_KEYS[index]
+    if key!=current: st.query_params['page']=key
+    return key
+
+
+def _phone_toggle():
+    current=st.query_params.get('view')=='phone'
+    phone=st.toggle('📱 Telefon',value=current,key='phone_view',help='Kiçik ekran üçün sadə görünüş; ünvanı əlfəcinə əlavə etsəniz, həmişə belə açılacaq.')
+    if phone!=current:
+        if phone: st.query_params['view']='phone'
+        else: st.query_params.pop('view',None)
+    return phone
+
+
+class Ctx:
+    """Everything the pages share, read once per rerun."""
+    def __init__(self,phone):
+        self.phone=phone; self.config=_APP_CONFIG
+        now_local=datetime.now(AZ_TZ); today=now_local.date()
+        self.today_start=datetime.combine(today,dt_time.min,tzinfo=AZ_TZ).astimezone(timezone.utc).isoformat()
+        self.today_end=(datetime.combine(today,dt_time.min,tzinfo=AZ_TZ)+timedelta(days=1)).astimezone(timezone.utc).isoformat()
+        self.status=queries.get_bot_status(DB_PATH); self.snapshot=queries.get_latest_snapshot(DB_PATH)
+        self.stale=not _heartbeat_fresh(self.status); pid=_lock_pid(); self.supervisor_running=_supervisor_running()
+        server=self.config.get('runtime',{}).get('location','local')=='server'
+        self.process_running=(self.supervisor_running or _heartbeat_fresh(self.status)) if server else (_pid_running(pid) or self.supervisor_running)
+        self.account=(self.status or {}).get('account_type','UNKNOWN').upper()
+        self.paused=(ROOT/'STOP').exists(); self.stop_mode=stop_state(ROOT)
+        self.mt5_connected=bool((self.status or {}).get('mt5_connected',0)) and not self.stale
+        self.magic=self.config.get('magic_number')
+        now_utc=datetime.now(timezone.utc); self.opened=queries.get_open_positions(DB_PATH)
+        for row in self.opened:
+            row['duration']=format_duration((now_utc-_as_utc(row['open_time'])).total_seconds()/60)
+            row['direction_label']=direction_label(row['direction']); row['strategy_label']=strategy_label(row['strategy'])
+            row['net_result']=float(row.get('profit') or 0)+float(row.get('commission') or 0)+float(row.get('swap') or 0)
+        self.floating=sum(row['net_result'] for row in self.opened)
+        self.brain_state=brain_overview(self.config,DATA_DIR)
+
+
+def _header(ctx):
+    if ctx.stop_mode=='halt' and not ctx.process_running: text,kind='⛔ Tam dayandırılıb (HALT) · avtomatik başlamayacaq','bad'
+    elif not ctx.process_running: text,kind='🔴 Bot dayanıb','bad'
+    elif ctx.stale: text,kind='🔴 Bot cavab vermir · son siqnal 60 saniyədən köhnədir','bad'
+    elif not ctx.mt5_connected: text,kind='🔴 MT5 ilə əlaqə yoxdur','bad'
+    elif ctx.status and not bool(ctx.status.get('trade_allowed',1)): text,kind='🔴 MT5-də "Algo Trading" bağlıdır','bad'
+    elif ctx.paused: text,kind='🟡 Fasilədə · yeni əmr açılmır, açıq mövqelər idarə olunur','warn'
+    else: text,kind='🟢 Bot işləyir','good'
+    try:
+        raw=json.loads((ctx.status or {}).get('scan_groups_open') or '{}')
+        groups=', '.join(GROUP_LABELS.get(g,g) for g,c in raw.items() if int(c)>0) or 'hazırda açıq bazar yoxdur'
+    except (ValueError,TypeError): groups='bazar qrupları məlum deyil'
+    st.markdown(ui.hero(text,kind,f'Açıq bazarlar: {groups}'),unsafe_allow_html=True)
+    runtime=runtime_label(ctx.config)
+    telegram=os.getenv('TELEGRAM_BOT_TOKEN') and os.getenv('TELEGRAM_CHAT_ID')
+    st.markdown(ui.pills([(f'Hesab: {ctx.account if ctx.account in {"DEMO","REAL"} else "naməlum"}','info' if ctx.account=='DEMO' else 'warn'),
+                          (runtime['text'],runtime['state']),
+                          ('MT5 qoşulub' if ctx.mt5_connected else 'MT5 qoşulmayıb','good' if ctx.mt5_connected else 'bad'),
+                          (ctx.brain_state['title'],ctx.brain_state['state']),
+                          (('Telegram aktivdir','good') if telegram else ('Telegram söndürülüb','warn'))]),unsafe_allow_html=True)
+    if runtime['place']=='Linux server' and not os.getenv('DASHBOARD_PASSWORD'):
+        st.warning('Panel serverdə parolsuz işləyir. .env faylında DASHBOARD_PASSWORD təyin edin.')
+
+
+def _controls(ctx):
+    _flash()
+    cols=st.columns(1 if ctx.phone else 3)
+    with cols[0]:
+        if st.button('⏹ Botu dayandır' if ctx.process_running else '▶ Botu başlat',key='bot_toggle',width='stretch',type='primary'):
+            if ctx.process_running: _send('stop','Dayandırma əmri göndərildi.')
+            else:
+                ok,message=_start_bot()
+                st.session_state.action_message='Botun başladılması istənildi.' if ok else f'Bot başlamadı: {translate_message(message)}'
+                st.session_state.action_level='success' if ok else 'error'
+            st.rerun()
+    with cols[1 if not ctx.phone else 0]:
+        if st.button('▶ Davam et' if ctx.paused else '⏸ Fasilə',key='pause_toggle',disabled=not ctx.process_running,width='stretch'):
+            _send('resume' if ctx.paused else 'pause','Davam etmə əmri göndərildi.' if ctx.paused else 'Fasilə əmri göndərildi.'); st.rerun()
+    with cols[2 if not ctx.phone else 0]:
+        with st.popover('✖ Hamısını bağla və dayan',width='stretch'):
+            st.write('Bütün açıq mövqelər bazar qiyməti ilə bağlanacaq və bot dayanacaq.')
+            if st.button('Bəli, hamısını bağla',key='close_all_stop',disabled=not ctx.process_running,type='primary'):
+                _send('close_all_stop','Bütün mövqeləri bağlama və dayandırma əmri göndərildi.'); st.rerun()
+
+
+def _view_overview(ctx):
+    now_utc=datetime.now(timezone.utc)
+    utc_day=datetime.combine(now_utc.date(),dt_time.min,tzinfo=timezone.utc); utc_week=utc_day-timedelta(days=utc_day.weekday())
+    pnl_day=queries.get_pnl_since(utc_day.isoformat(),DB_PATH,ctx.magic)['pnl']; pnl_week=queries.get_pnl_since(utc_week.isoformat(),DB_PATH,ctx.magic)['pnl']
+    balance=ctx.snapshot.get('balance') if ctx.snapshot else None; equity=ctx.snapshot.get('equity') if ctx.snapshot else None
+    risk=risk_overview(ctx.config,ctx.account,balance,pnl_day,pnl_week,ctx.floating)
+    today=queries.get_pnl_since(ctx.today_start,DB_PATH,ctx.magic); result=float(today['pnl'])+ctx.floating
+    tone=lambda v:'good' if v>0 else 'bad' if v<0 else ''
+    st.markdown(ui.kpis([('Balans',format_money(balance),'',f'Kapital {format_money(equity)}'),
+                         ('Bu gün',format_money(result,signed=True),tone(result),f'{today["trades"]} bağlanıb · {today["win_rate"]:.0%} qazanc'),
+                         ('Açıq mövqelər',str(len(ctx.opened)),'',f'Cari nəticə {format_money(ctx.floating,signed=True)}'),
+                         ('Hər əmrdə risk',f'{risk["risk_pct"]:g}%','',f'≈ {format_money(risk["risk_money"])} · {risk["account"]}')]),unsafe_allow_html=True)
+    cols=st.columns(1 if ctx.phone else 2)
+    for col,(label,key) in zip(cols*2,[('Gündəlik zərər limiti','daily'),('Həftəlik zərər limiti','weekly')]):
+        item=risk[key]
+        with col: st.markdown(ui.limit_bar(label,item['used_share'],f'{item["used_share"]:.0%} istifadə olunub',f'Zərər {format_money(item["loss_money"])} / {format_money(item["limit_money"])} ({item["limit_pct"]:g}%) · qalıb {format_money(item["left_money"])}'),unsafe_allow_html=True)
+    _controls(ctx)
+    hours=_hours_summary(ctx.config)
+    if hours: st.caption('Yeni əmr saatları (Bakı vaxtı, bu gün): '+hours)
+    left,right=st.columns([3,2]) if not ctx.phone else (st.container(),st.container())
+    with left:
+        st.markdown('#### Bu gün bağlananlar')
+        rows=queries.get_trade_history(ctx.today_start,ctx.today_end,DB_PATH,ctx.magic)
+        if rows:
+            frame=pd.DataFrame([{'Saat':local_time(r['close_time'],'%H:%M'),'Alət':r['symbol'],'İstiqamət':direction_label(r['direction']),'Nəticə':float(r['net']),'Səbəb':close_reason_label(r['close_reason'])} for r in rows])
+            _table(frame,ctx.phone,['Saat','Alət','Nəticə'],money='Nəticə')
+        else: st.caption('Bu gün bağlanan əmr yoxdur.')
+    with right:
+        st.markdown('#### Bu günün kapitalı')
+        curve=queries.get_equity_curve(ctx.today_start,ctx.today_end,DB_PATH)
+        if curve:
+            frame=pd.DataFrame(curve); frame['Saat']=pd.to_datetime(frame.time,utc=True).dt.tz_convert(AZ_TZ)
+            st.area_chart(frame.set_index('Saat')[['equity']].rename(columns={'equity':'Kapital'}),height=180)
+        else: st.caption('Bu gün üçün kapital qeydi yoxdur.')
+    with st.expander('📰 Yaxın xəbərlər'):
+        news=[r for r in queries.get_recent_events(DB_PATH,100) if r.get('source')=='news' and 'Yaxın xəbər ·' in r.get('message','')]
+        if news: st.dataframe(pd.DataFrame([{'Xəbər':r['message'].replace('Yaxın xəbər · ','')} for r in news[:20]]),width='stretch',hide_index=True)
+        else: st.caption('Növbəti 24 saat üçün xəbər yoxdur.')
+
+
+def _hours_summary(config):
+    """Today's entry windows converted to Baku time, e.g. 'GOLD 13:00–02:00 · digərləri 18:30–01:00'."""
+    from zoneinfo import ZoneInfo
+    hours=(config.get('universe',{}) or {}).get('trading_hours') or {}
+    if not hours.get('enabled'): return 'məhdudiyyət yoxdur'
+    tz=ZoneInfo(str(hours.get('timezone','UTC'))); today=datetime.now(tz).date()
+    def window(start,end):
+        try:
+            s=datetime.combine(today,dt_time.fromisoformat(str(start)),tzinfo=tz).astimezone(AZ_TZ)
+            e=datetime.combine(today,dt_time.fromisoformat(str(end)),tzinfo=tz).astimezone(AZ_TZ)
+            return f'{s:%H:%M}–{e:%H:%M}'
+        except ValueError: return f'{start}–{end}'
+    parts=[f'{name} {window(w.get("start"),w.get("end"))}' for name,w in (hours.get('per_symbol') or {}).items()]
+    parts.append(('digərləri ' if parts else '')+window(hours.get('start'),hours.get('end')))
+    return ' · '.join(parts)
+
 
 def _position_chart_card(row,timeframe,phone):
     from src.dashboard.charts import position_chart, r_multiple
@@ -151,466 +319,302 @@ def _position_chart_card(row,timeframe,phone):
     result=float(row.get('net_result') or 0)
     color='#16a34a' if result>0 else '#dc2626' if result<0 else '#64748b'
     r_text=f' · {r_value:+.2f}R' if r_value is not None else ''
-    st.markdown(f"<div style='display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-weight:650'><span>{row['symbol']} · {row['direction_label']} · {row['volume']} lot</span><span style='color:{color}'>{format_money(result,signed=True)}{r_text}</span></div>",unsafe_allow_html=True)
+    head,button=st.columns([4,1])
+    head.markdown(f"<div style='display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-weight:650'><span>{row['symbol']} · {row['direction_label']} · {row['volume']} lot · {row['duration']}</span><span style='color:{color}'>{format_money(result,signed=True)}{r_text}</span></div>",unsafe_allow_html=True)
+    with button.popover('Bağla',width='stretch'):
+        st.write(f"{row['symbol']} mövqeyi (bilet {row['ticket']}) bazar qiyməti ilə bağlanacaq.")
+        if st.button('Bəli, bağla',key=f"close_{row['ticket']}",type='primary'):
+            _send(f"close_position:{int(row['ticket'])}",f"{row['symbol']} mövqeyinin bağlanması istənildi."); st.rerun()
     chart=position_chart(payload,timeframe,height=240 if phone else 300) if payload else None
-    if chart is None:
-        st.caption('Qrafik hələ hazır deyil: bot növbəti dövrdə (≈15 san) yazacaq.')
-        return
-    st.altair_chart(chart,use_container_width=True)
+    if chart is None: st.caption('Qrafik hələ hazır deyil: bot bir neçə saniyəyə yazacaq.'); return
+    st.altair_chart(chart,width='stretch')
     try: age=(datetime.now(timezone.utc)-_as_utc(payload['updated_at'])).total_seconds()
     except (KeyError,ValueError,TypeError): age=None
-    stale=' · ⚠ köhnədir' if age is not None and age>120 else ''
-    st.caption(f"Mavi: giriş · qırmızı: SL · yaşıl: TP · tünd nöqtəli: cari qiymət · {row['duration']} açıqdır"+(f' · yenilənib {age:.0f} san əvvəl' if age is not None else '')+stale)
+    st.caption('Mavi: giriş · qırmızı: SL · yaşıl: TP · nöqtəli: cari qiymət'+(f' · {age:.0f} san əvvəl yenilənib' if age is not None else '')+(' · ⚠ köhnədir' if age is not None and age>30 else ''))
+    _analysis_card(payload.get('analysis'))
 
-def _position_charts(opened,phone):
-    """Price chart per open position, drawn from snapshots the bot writes to data/charts."""
-    st.markdown('##### Mövqe qrafikləri')
-    labels={'M1 · son 2 saat':'M1','M5 · son 10 saat':'M5'}
-    choice=st.radio('Zaman çərçivəsi',list(labels),horizontal=True,key='chart_timeframe',label_visibility='collapsed')
-    timeframe=labels[choice]
-    if phone:
-        picked=st.selectbox('Mövqe',opened,key='chart_position',format_func=lambda row:f"{row['symbol']} · {row['direction_label']} · {format_money(row['net_result'],signed=True)}")
-        _position_chart_card(picked,timeframe,phone)
-        return
-    for start in range(0,len(opened),2):
-        cols=st.columns(2)
-        for col,row in zip(cols,opened[start:start+2]):
-            with col,st.container(border=True): _position_chart_card(row,timeframe,phone)
 
-def _phone_mode():
-    """Phone view: remembered in the URL (?view=phone) so a home-screen bookmark opens it directly."""
-    current=st.query_params.get('view')=='phone'
-    phone=st.toggle('📱 Telefon görünüşü',value=current,key='phone_view',help='Kiçik ekran üçün sadə görünüş; ünvanı əlfəcinə əlavə etsəniz, həmişə belə açılacaq.')
-    if phone!=current:
-        if phone: st.query_params['view']='phone'
-        else: st.query_params.pop('view',None)
-    return phone
+DANGER_TEXT={'EMA kəsişməsi əks istiqamətdə':'ortalamalar əleyhinə kəsişib','son M1 diapazonu qırıldı':'son dib/zirvə qırılıb',
+             'RSI/ROC impulsu zəifləyib':'impuls əleyhinədir','əks istiqamətdə həcm sıçrayışı':'əleyhinə həcm sıçrayışı'}
+
+
+def _analysis_card(analysis):
+    """What the bot's management rules say about this position right now."""
+    if not analysis: st.caption('🧠 Təhlil hələ yoxdur: bot yeni kodla işə düşəndən sonra görünəcək.'); return
+    colors={'good':'#16a34a','warn':'#d97706','bad':'#dc2626','neutral':'#475569'}
+    color=colors.get(analysis.get('tone'),'#475569')
+    danger=analysis.get('danger',{}); cont=analysis.get('continuation',{})
+    score,maximum,threshold=int(danger.get('score',0)),max(1,int(danger.get('max',4))),int(danger.get('threshold',3))
+    bar_color='#dc2626' if score>=threshold else '#d97706' if score>=threshold-1 else '#16a34a'
+    reasons=', '.join(DANGER_TEXT.get(r,r) for r in danger.get('reasons',[])) or 'əleyhinə əlamət yoxdur'
+    current_r=analysis.get('current_r'); r_text=f'{current_r:+.2f}R' if current_r is not None else '—'
+    cont_parts=[('qrafiklər eyni istiqamətdə' if cont.get('mtf') else 'qrafiklər razı deyil'),('hərəkət güclənir' if cont.get('rising') else 'hərəkət güclənmir')]
+    left=analysis.get('minutes_left'); hard=analysis.get('hard_limit_minutes')
+    off='' if danger.get('enabled',True) else ' · erkən bağlama söndürülüb'
+    st.markdown(f"""<div style='border-left:4px solid {color};background:#f8fafc;padding:8px 12px;border-radius:6px;font-size:.88rem;line-height:1.5'>
+<div style='font-weight:650;color:{color}'>🧠 {analysis.get('plan','')}</div>
+<div style='display:flex;align-items:center;gap:8px;margin-top:4px'><span>Təhlükə {score}/{maximum}</span>
+<div style='flex:1;height:6px;background:#e2e8f0;border-radius:3px'><div style='width:{min(100,score/maximum*100):.0f}%;height:6px;background:{bar_color};border-radius:3px'></div></div>
+<span style='color:#64748b'>{threshold}-də bağlayır{off}</span></div>
+<div style='color:#475569'>{reasons}</div>
+<div style='color:#475569'>İndi {r_text} · ən yaxşı {float(analysis.get('peak_r') or 0):+.2f}R · davam: {', '.join(cont_parts)}</div>
+<div style='color:#64748b'>Vaxt: {float(left or 0):.0f} dəq qalıb{f' · uzadılsa ən çox {float(hard):.0f} dəq' if hard else ''}{' · uzadılıb' if analysis.get('extended') else ''}</div>
+</div>""",unsafe_allow_html=True)
+
+
+def _view_positions(ctx):
+    _flash()
+    if not ctx.opened:
+        st.info('Hazırda açıq bot mövqeyi yoxdur.')
+    else:
+        labels={'M1 · son 2 saat':'M1','M5 · son 10 saat':'M5'}
+        choice=st.segmented_control('Zaman çərçivəsi',list(labels),default='M1 · son 2 saat',key='chart_tf')
+        timeframe=labels.get(choice,'M1')
+        if ctx.phone:
+            picked=st.selectbox('Mövqe',ctx.opened,key='chart_position',format_func=lambda r:f"{r['symbol']} · {r['direction_label']} · {format_money(r['net_result'],signed=True)}")
+            with st.container(border=True): _position_chart_card(picked,timeframe,True)
+        else:
+            for start in range(0,len(ctx.opened),2):
+                cols=st.columns(2)
+                for col,row in zip(cols,ctx.opened[start:start+2]):
+                    with col,st.container(border=True): _position_chart_card(row,timeframe,False)
+        st.markdown('#### Cədvəl')
+        frame=pd.DataFrame([{'Bilet':r['ticket'],'Alət':r['symbol'],'İstiqamət':r['direction_label'],'Həcm':r['volume'],'Giriş':r['open_price'],'SL':r['sl'],'TP':r['tp'],'Nəticə':r['net_result'],'Müddət':r['duration'],'Strategiya':r['strategy_label']} for r in ctx.opened])
+        _table(frame,ctx.phone,['Alət','İstiqamət','Nəticə','Müddət'],money='Nəticə')
+    external=queries.get_external_open_positions(DB_PATH)
+    if external:
+        with st.expander(f'Bot xaricindəki mövqelər ({len(external)}) · yalnız izləmə'):
+            frame=pd.DataFrame([{'Alət':r['symbol'],'İstiqamət':direction_label(r['direction']),'Həcm':r['volume'],'Nəticə':float(r.get('profit') or 0)+float(r.get('swap') or 0),'Magic':r['magic']} for r in external])
+            _table(frame,ctx.phone,['Alət','Nəticə'],money='Nəticə')
+
+
+def _view_history(ctx):
+    presets={'Bu gün':0,'7 gün':7,'30 gün':30,'90 gün':90,'Hamısı':None}
+    cols=st.columns([2,2]) if not ctx.phone else (st.container(),st.container())
+    with cols[0]: period=st.segmented_control('Dövr',list(presets),default='7 gün',key='hist_period')
+    days=presets.get(period or '7 gün')
+    end=datetime.now(timezone.utc)
+    start=ctx.today_start if days==0 else ('1970-01-01T00:00:00+00:00' if days is None else (end-timedelta(days=days)).isoformat())
+    rows=queries.get_trade_history(start,end.isoformat(),DB_PATH,ctx.magic)
+    symbols=sorted({r['symbol'] for r in rows})
+    with cols[1]: chosen=st.multiselect('Alət',symbols,key='hist_symbols',placeholder='Hamısı')
+    if chosen: rows=[r for r in rows if r['symbol'] in chosen]
+    s=trade_history.summary(rows)
+    pf='∞' if s['profit_factor']==float('inf') else f"{s['profit_factor']:.2f}"
+    tone=lambda v:'good' if v>0 else 'bad' if v<0 else ''
+    st.markdown(ui.kpis([('Nəticə',format_money(s['total'],signed=True),tone(s['total']),f"{s['trades']} əmr · orta {format_money(s['average'],signed=True)}"),
+                         ('Qazanma faizi',f"{s['win_rate']:.0%}",'',f"{s['wins']} qazanan / {s['trades']-s['wins']} itirən"),
+                         ('Orta qazanc / zərər',f"{format_money(s['average_win'])} / {format_money(abs(s['average_loss']))}",'',f'Qazanc əmsalı (PF) {pf}'),
+                         ('Xərclər',format_money(s['costs']),'',f"Orta müddət {s['average_minutes']:.0f} dəq" if s['average_minutes'] else 'Orta müddət —')]),unsafe_allow_html=True)
+    for note in trade_history.insights(rows): st.caption('💡 '+note)
+    if not rows: st.info('Seçilmiş dövrdə bağlanmış əmr yoxdur.'); return
+    daily=trade_history.daily_totals(rows,AZ_TZ)
+    if len(daily)>1:
+        frame=pd.DataFrame(daily); frame['Tarix']=pd.to_datetime(frame.date)
+        st.bar_chart(frame.set_index('Tarix')[['pnl']].rename(columns={'pnl':'Gündəlik nəticə ($)'}),height=200)
+    hours=trade_history.by_hour(rows,AZ_TZ)
+    if hours:
+        st.markdown('#### Saata görə nəticə (Bakı vaxtı, açılış saatı)')
+        st.caption('Hansı saatlarda pul qazanılır, hansında itirilir. Zərər verən saatları Ayarlar → Saatlar-dan bağlamaq olar.')
+        frame=pd.DataFrame([{'Saat':f"{h['hour']:02d}:00",'Nəticə ($)':h['total']} for h in hours])
+        st.bar_chart(frame.set_index('Saat'),height=200)
+        frame=pd.DataFrame([{'Saat':f"{h['hour']:02d}:00–{(h['hour']+1)%24:02d}:00",'Əmr':h['trades'],'Qazanma %':f"{h['win_rate']:.0%}",'Orta':h['average'],'Cəmi':h['total']} for h in hours])
+        st.dataframe(frame.style.format({'Orta':lambda v:format_money(v,signed=True),'Cəmi':lambda v:format_money(v,signed=True)}).map(_money_color,subset=['Cəmi']),width='stretch',hide_index=True)
+    left,right=st.columns(2) if not ctx.phone else (st.container(),st.container())
+    def breakdown(title,key,label):
+        st.markdown(f'#### {title}')
+        frame=pd.DataFrame([{label:(close_reason_label(g['name']) if key=='close_reason' else g['name']),'Əmr':g['trades'],'Qazanma %':f"{g['win_rate']:.0%}",'Orta':g['average'],'Cəmi':g['total']} for g in trade_history.group_by(rows,key)])
+        st.dataframe(frame.style.format({'Orta':lambda v:format_money(v,signed=True),'Cəmi':lambda v:format_money(v,signed=True)}).map(_money_color,subset=['Cəmi']),width='stretch',hide_index=True)
+    with left: breakdown('Bağlanma səbəbinə görə','close_reason','Səbəb')
+    with right: breakdown('Alətə görə','symbol','Alət')
+    reviews=queries.get_exit_reviews(start,end.isoformat(),DB_PATH,ctx.magic)
+    if chosen: reviews=[r for r in reviews if r['symbol'] in chosen]
+    st.markdown('#### Botun öz bağlamaları düzgün idimi?')
+    st.caption('Bot əmri özü bağlayanda (erkən, hərəkətsizlik, vaxt), sonrakı 30 dəqiqədə qiymətin ilkin SL və TP-yə nisbətən nə etdiyi yoxlanılır. "Qənaət" müsbətdirsə, bağlamaq saxlamaqdan yaxşı olub.')
+    summary=trade_history.exit_review_summary(reviews)
+    if summary:
+        frame=pd.DataFrame([{'Səbəb':close_reason_label(g['reason']),'Yoxlanıb':g['trades'],'Kömək etdi':g['helped'],'Zərər verdi':g['hurt'],'Saxlasaydı SL':g['would_sl'],'Saxlasaydı TP':g['would_tp'],'Qənaət':g['saved']} for g in summary])
+        st.dataframe(frame.style.format({'Qənaət':lambda v:format_money(v,signed=True)}).map(_money_color,subset=['Qənaət']),width='stretch',hide_index=True)
+    else: st.caption('Hələ yoxlanmış bağlama yoxdur: bot hər bağlamadan 30 dəqiqə sonra yoxlayır.')
+    st.markdown('#### Bütün əmrlər')
+    frame=pd.DataFrame([{'Bağlanıb':local_time(r['close_time'],'%d.%m %H:%M'),'Alət':r['symbol'],'İstiqamət':direction_label(r['direction']),'Həcm':r['volume'],'Giriş':r['open_price'],'Çıxış':r['close_price'],'Nəticə':float(r['net']),'Səbəb':close_reason_label(r['close_reason']),'Strategiya':strategy_label(r['strategy'])} for r in rows])
+    _table(frame,ctx.phone,['Bağlanıb','Alət','Nəticə'],money='Nəticə')
+    st.download_button('⬇ CSV kimi yüklə',frame.to_csv(index=False).encode('utf-8-sig'),file_name='emrler.csv',mime='text/csv')
+
+
+def _view_settings(ctx):
+    _flash()
+    if os.getenv('DASHBOARD_PASSWORD') and not st.session_state.get('dashboard_authenticated'):
+        st.warning('Ayarları dəyişmək üçün panelə parol ilə daxil olun.'); return
+    config_path=ROOT/'config.yaml'
+    doc=settings_editor.load_document(config_path); values=settings_editor.current_values(doc)
+    st.caption('Dəyişikliklər "Yadda saxla" düyməsi ilə tətbiq olunur: ayarlar yoxlanılır, köhnə fayl ehtiyat nüsxəyə yazılır və bot yenidən başladılır. Açıq mövqelərə toxunulmur.')
+    real=ctx.config.get('risk',{})
+    with st.form('settings_form',border=False):
+        changes={}; widget=0
+        def field_input(f,container):
+            nonlocal widget; widget+=1; key=f'set_{widget}'; value=values.get(f.path)
+            if f.kind=='bool': return container.toggle(f.label,value=bool(value),help=f.help or None,key=key)
+            if f.kind=='int': return container.number_input(f.label,min_value=int(f.minimum),max_value=int(f.maximum),value=int(value if value is not None else f.minimum),step=int(f.step or 1),help=f.help or None,key=key)
+            if f.kind=='float': return container.number_input(f.label,min_value=float(f.minimum),max_value=float(f.maximum),value=float(value if value is not None else f.minimum),step=float(f.step or .1),format='%.2f',help=f.help or None,key=key)
+            if f.kind=='time': return container.text_input(f.label,value=str(value or ''),help='SS:DD, məsələn 09:30',key=key)
+            if f.kind=='choice':
+                options=list(f.choices); index=options.index(value) if value in options else 0
+                return container.selectbox(f.label,options,index=index,help=f.help or None,key=key,format_func=(lambda o:f'1 : {o:g}') if f.path==('risk','reward_ratio') else (lambda o:f'{o:g}' if isinstance(o,float) else str(o)))
+            if f.kind=='symbols': return container.multiselect(f.label,settings_editor.known_symbols(doc),default=list(value or []),help=f.help or None,key=key)
+        tabs=st.tabs(list(settings_editor.SECTIONS))
+        for section,tab in zip(settings_editor.SECTIONS,tabs):
+            with tab:
+                fields=[f for f in settings_editor.FIELDS if f.section==section]
+                grid=st.columns(1 if ctx.phone else 2)
+                for i,f in enumerate(fields): changes[f.path]=field_input(f,grid[i%len(grid)])
+                if section=='Saatlar':
+                    st.markdown('**Ayrıca saatı olan alətlər** (boş buraxılan sətir silinir)')
+                    current=settings_editor.symbol_hours(doc)
+                    base=pd.DataFrame([{'Alət':k,'Başlanğıc':v['start'],'Son':v['end']} for k,v in current.items()] or [{'Alət':'','Başlanğıc':'','Son':''}])
+                    edited=st.data_editor(base,num_rows='dynamic',width='stretch',hide_index=True,key='hours_editor')
+                    st.caption('Saatlar yuxarıda seçilmiş saat qurşağı ilə yazılır. İndiki pəncərələr Bakı vaxtı ilə: '+_hours_summary(ctx.config))
+                if section=='Risk (demo)':
+                    st.info(f"Real hesab limitləri kilidlidir və buradan dəyişmir: hər əmrdə {real.get('risk_per_trade_pct',.25)}%, gündəlik {real.get('daily_loss_limit_pct',3)}%, həftəlik {real.get('weekly_loss_limit_pct',8)}%.")
+        submitted=st.form_submit_button('💾 Yadda saxla və botu yenidən başlat',type='primary',width='stretch')
+    if submitted:
+        hours_rows={str(r['Alət']).strip():{'start':str(r['Başlanğıc']).strip(),'end':str(r['Son']).strip()} for r in edited.to_dict('records') if str(r.get('Alət') or '').strip()}
+        try:
+            before=dict(values)
+            settings_editor.apply_changes(doc,changes,hours_rows)
+            settings_editor.save(config_path,DATA_DIR,settings_editor.dump_document(doc),ROOT)
+            diff=settings_editor.describe_changes(before,settings_editor.current_values(doc))
+            restarted=''
+            if ctx.process_running:
+                try: queries.enqueue_command('restart',DB_PATH,ttl_seconds=_command_ttl()); restarted=' Bot yenidən başladılır (≈15–30 san).'
+                except Exception as exc: restarted=f' Botu yenidən başlatmaq alınmadı: {translate_message(exc)}'
+            else: restarted=' Bot dayanıqdır: ayarlar bot başlayanda tətbiq olunacaq.'
+            st.session_state.action_message='Ayarlar yadda saxlanıldı.'+restarted+('\n\n'+'\n'.join('• '+line for line in diff) if diff else ''); st.session_state.action_level='success'
+            st.rerun()
+        except ValueError as exc:
+            st.error(f'Yadda saxlanılmadı: {translate_message(exc)}')
+    with st.expander('🕘 Əvvəlki ayarlara qayıt'):
+        backups=settings_editor.list_backups(DATA_DIR)
+        if not backups: st.caption('Hələ ehtiyat nüsxə yoxdur: ilk yadda saxlamadan sonra yaranacaq.')
+        else:
+            def label(path):
+                stamp=path.stem.replace('config-','')
+                try: return datetime.strptime(stamp[:15],'%Y%m%d-%H%M%S').replace(tzinfo=timezone.utc).astimezone(AZ_TZ).strftime('%d.%m.%Y %H:%M:%S')
+                except ValueError: return path.name
+            picked=st.selectbox('Ehtiyat nüsxə (yadda saxlamadan əvvəlki vəziyyət)',backups,format_func=label,key='restore_pick')
+            if st.button('Bu ayarları bərpa et və botu yenidən başlat',key='restore_btn'):
+                try:
+                    settings_editor.restore(ROOT/'config.yaml',DATA_DIR,picked,ROOT)
+                    if ctx.process_running: _send('restart','Ayarlar bərpa olundu, bot yenidən başladılır.')
+                    else: st.session_state.action_message='Ayarlar bərpa olundu.'; st.session_state.action_level='success'
+                    st.rerun()
+                except ValueError as exc: st.error(f'Bərpa alınmadı: {translate_message(exc)}')
+    with st.expander('✉️ Telegram'):
+        if os.getenv('TELEGRAM_BOT_TOKEN') and os.getenv('TELEGRAM_CHAT_ID'):
+            if st.button('Test mesajı göndər',key='tg_test'):
+                try:
+                    from src.notify import TelegramNotifier
+                    notifier=TelegramNotifier(); notifier.send('dashboard_test','✅ Paneldən test mesajı'); notifier.flush()
+                    st.success('Göndərildi, Telegram-ı yoxlayın.')
+                except Exception as exc: st.error(f'Göndərilmədi: {exc}')
+        else: st.caption('Telegram qurulmayıb: .env faylına TELEGRAM_BOT_TOKEN və TELEGRAM_CHAT_ID əlavə edin.')
+
+
+def _view_brain(ctx):
+    brain_cfg=ctx.config.get('brain',{})
+    try: gate=json.loads((DATA_DIR/'brain'/'gate.json').read_text(encoding='utf-8'))
+    except (OSError,ValueError): gate={'status':'FAIL','reasons':['Yekun test qiymətləndirməsi hələ aparılmayıb.']}
+    try: live_gate=json.loads((DATA_DIR/'brain'/'live_gate.json').read_text(encoding='utf-8'))
+    except (OSError,ValueError): live_gate={}
+    state=ctx.brain_state
+    if state['state']=='good': st.success(f"{state['title']} · {state['text']}")
+    else:
+        st.warning(f"{state['title']} · {state['text']}")
+        for reason in state['reasons']: st.caption('• '+reason)
+        for reason in gate.get('reasons',[]): st.caption('• '+translate_message(reason))
+    brain_risk=risk_overview(ctx.config,ctx.account,None,0,0,0)
+    if brain_risk['brain_max_pct']>0:
+        st.caption(f"Beyin aktiv olanda risk aralığı ({brain_risk['account']}): {brain_risk['brain_min_pct']:g}% – {brain_risk['brain_max_pct']:g}% · ardıcıl {int(brain_cfg.get('loss_streak_base_risk',3))} zərərdən sonra baza riskə qayıdır")
+    if live_gate.get('mode')=='shadow': st.error('Canlı sapma qoruyucusu beyni müşahidə rejiminə qaytarıb.')
+    if gate.get('evaluated_at'): st.caption('Son qiymətləndirmə: '+local_time(gate['evaluated_at']))
+    calibration=gate.get('metrics',{}).get('calibration',[])
+    if calibration:
+        st.markdown('#### Ehtimal kalibrlənməsi')
+        cal=pd.DataFrame(calibration).rename(columns={'predicted':'Proqnoz','actual':'Fakt','bucket':'Aralıq'}).set_index('Aralıq')
+        st.line_chart(cal[['Proqnoz','Fakt']],height=220)
+    ablation=gate.get('metrics',{}).get('ablation',{})
+    if ablation:
+        st.markdown('#### Qatların müqayisəsi')
+        st.dataframe(pd.DataFrame([{'Model':n,'Əmr':r['trades'],'Qazanma %':f"{r['win_rate']:.1%}",'Gözlənilən (R)':r['expectancy_r'],'PF':r['profit_factor']} for n,r in ablation.items()]),width='stretch',hide_index=True)
+
+
+def _view_system(ctx):
+    stats=ctx.status or {}
+    heartbeat=(datetime.now(timezone.utc)-_as_utc(stats['time'])).total_seconds() if stats.get('time') else None
+    restarts=queries.get_supervisor_restart_count(ctx.today_start,ctx.today_end,DB_PATH)
+    st.markdown(ui.kpis([('MT5','Qoşulub' if ctx.mt5_connected else 'Yoxdur','good' if ctx.mt5_connected else 'bad',f"Algo Trading {'açıq' if stats.get('trade_allowed') else 'bağlı'}"),
+                         ('Son siqnal',f'{heartbeat:.0f} san' if heartbeat is not None else '—','good' if heartbeat is not None and heartbeat<60 else 'bad','botun ürək döyüntüsü'),
+                         ('Nəzarətçi','İşləyir' if ctx.supervisor_running else 'Dayanıb','good' if ctx.supervisor_running else '',f'bu gün {restarts} yenidən başlama'),
+                         ('Skan',f"{stats.get('scan_scanned',0)}/{stats.get('scan_total',0)}",'',f"{stats.get('scan_signals',0)} siqnal · {float(stats.get('scan_seconds',0) or 0):.1f} san")]),unsafe_allow_html=True)
+    st.markdown('#### Son 1 saat: siqnallar niyə əmrə çevrilmədi')
+    funnel=queries.get_pipeline_funnel((datetime.now(timezone.utc)-timedelta(hours=1)).isoformat(),DB_PATH)
+    if funnel.get('available'):
+        counts=funnel.get('counts',{})
+        stages=[('Skan','symbols_scanned'),('Filtrdən keçib','filters_passed'),('Siqnal','signals'),('Riskdən keçib','passed_risk'),('Açılıb','orders')]
+        cols=st.columns(len(stages) if not ctx.phone else 2)
+        for i,(label,key) in enumerate(stages): cols[i%len(cols)].metric(label,f"{int(counts.get(key,0)):,}")
+    skips=queries.get_top_skip_reasons_since((datetime.now(timezone.utc)-timedelta(hours=1)).isoformat(),DB_PATH,8)
+    if skips: st.dataframe(pd.DataFrame([{'Səbəb':translate_message(r['skip_reason']),'Say':r['count']} for r in skips]),width='stretch',hide_index=True)
+    else: st.caption('Son 1 saatda rədd edilmiş siqnal yoxdur.')
+    gates=queries.get_adaptive_gates(DB_PATH)
+    if gates:
+        st.markdown('#### Müvəqqəti fasilələr')
+        st.dataframe(pd.DataFrame([{'Növ':'Strategiya' if r['scope']=='strategy' else 'Alət qrupu','Ad':strategy_label(r['name']) if r['scope']=='strategy' else GROUP_LABELS.get(r['name'],r['name']),'Son nəticələrin ortası':format_money(r.get('expectancy'),signed=True),'Nümunə':r.get('sample_size'),'Nə vaxta qədər':local_time(r['disabled_until'])} for r in gates]),width='stretch',hide_index=True)
+    left,right=st.columns(2) if not ctx.phone else (st.container(),st.container())
+    with left:
+        st.markdown('#### Xəbərdarlıqlar və xətalar')
+        events=[e for e in queries.get_recent_events(DB_PATH,200) if e['level'] in {'WARNING','ERROR','CRITICAL'}][:20]
+        if events: st.dataframe(pd.DataFrame([{'Vaxt':local_time(e['time'],'%d.%m %H:%M'),'Mənbə':e['source'],'Məlumat':translate_message(e['message'])} for e in events]),width='stretch',hide_index=True)
+        else: st.caption('Xəbərdarlıq yoxdur.')
+    with right:
+        st.markdown('#### Son əmrlər')
+        commands=queries.get_recent_commands(DB_PATH,10)
+        names={'pause':'Fasilə','resume':'Davam et','stop':'Dayandır','close_all':'Hamısını bağla','close_all_stop':'Hamısını bağla və dayan','restart':'Yenidən başlat'}
+        status_names={'pending':'Gözləyir','running':'İcra olunur','done':'Tamamlandı','failed':'Uğursuz','expired':'Vaxtı bitib'}
+        if commands: st.dataframe(pd.DataFrame([{'Vaxt':local_time(c.get('created_at'),'%d.%m %H:%M'),'Əmr':names.get(c['command'],c['command'].replace('close_position:','Mövqeni bağla #')),'Vəziyyət':status_names.get(c['status'],c['status']),'Məlumat':translate_message(c.get('message'))} for c in commands]),width='stretch',hide_index=True)
+        else: st.caption('Əmr yoxdur.')
+    with st.expander('💾 Ehtiyat nüsxələr'):
+        db_backups=sorted((DATA_DIR/'backups').glob('*.db'),reverse=True) if (DATA_DIR/'backups').is_dir() else []
+        st.caption('Verilənlər bazası: '+(', '.join(p.name for p in db_backups[:7]) if db_backups else 'hələ yoxdur'))
+        st.caption(f"Ayarlar: {len(settings_editor.list_backups(DATA_DIR))} nüsxə (Ayarlar → Əvvəlki ayarlara qayıt)")
+    with st.expander('✅ Real hesaba hazırlıq (son 7 gün)'):
+        now=datetime.now(timezone.utc); start,end=(now-timedelta(days=7)).isoformat(),now.isoformat()
+        for label,passed in readiness_checks(start,end,DB_PATH): st.markdown(('✅ ' if passed else '🔴 ')+label)
+        dashboard_cfg=ctx.config.get('dashboard',{}); cols=st.columns(2)
+        balance=cols[0].number_input('Real hesab məbləği ($)',min_value=1.0,value=float(dashboard_cfg.get('real_balance_default',100)),step=10.0,key='sim_balance')
+        risk_pct=cols[1].number_input('Planlaşdırılan risk (%)',min_value=.01,value=float(dashboard_cfg.get('real_risk_pct_default',1.0)),step=.1,key='sim_risk')
+        history_dir=Path(ctx.config.get('history',{}).get('data_dir','data/history')); history_dir=history_dir if history_dir.is_absolute() else ROOT/history_dir
+        try: specs=json.loads((history_dir/'symbol_specs.json').read_text(encoding='utf-8'))
+        except (OSError,ValueError): specs={}
+        sim=simulate_small_account(queries.get_signals_period(start,end,DB_PATH),balance,risk_pct,specs)
+        st.info(f"Son 7 gündəki {sim['signals']} siqnaldan bu kapital və risklə {sim['possible']} əmr açmaq olardı; {sim['min_lot_rejected']} siqnal minimum lot riskinə görə rədd edilərdi.")
+    with st.expander('⚙️ Botun iş axını'):
+        st.markdown('MT5 məlumatı → skaner (sessiya, spred, hərəkət) → strategiya siqnalı → xəbər və xərc filtri → risk qapıları → həcm → MT5 əmri → mövqe idarəsi (SL/TP, hərəkətsizlik, vaxt) → hesabat.')
+
 
 def main():
     st.set_page_config(page_title='Ticarət botu',page_icon='📈',layout='wide',initial_sidebar_state='collapsed')
     st.markdown(ui.CSS,unsafe_allow_html=True)
     if not _authenticated(): return
-    phone=_phone_mode()
-    # Phones refresh less often: less data and battery; the desktop keeps the 2 s live view.
-    st_autorefresh(interval=10000 if phone else 2000,key='dashboard_refresh')
-    now_local=datetime.now(AZ_TZ); today=now_local.date()
-    today_start=datetime.combine(today,dt_time.min,tzinfo=AZ_TZ).astimezone(timezone.utc).isoformat()
-    today_end=(datetime.combine(today,dt_time.min,tzinfo=AZ_TZ)+timedelta(days=1)).astimezone(timezone.utc).isoformat()
-    selected=st.session_state.get('detail_date',today)
-    detail_start=datetime.combine(selected,dt_time.min,tzinfo=AZ_TZ).astimezone(timezone.utc).isoformat()
-    detail_end=(datetime.combine(selected,dt_time.min,tzinfo=AZ_TZ)+timedelta(days=1)).astimezone(timezone.utc).isoformat()
-    status=queries.get_bot_status(DB_PATH); snapshot=queries.get_latest_snapshot(DB_PATH)
-    summary=queries.get_day_summary(today_start,today_end,DB_PATH)
-    stale=not _heartbeat_fresh(status); pid=_lock_pid(); supervisor_running=_supervisor_running()
-    process_running=(supervisor_running or _heartbeat_fresh(status)) if _APP_CONFIG.get('runtime',{}).get('location','local')=='server' else (_pid_running(pid) or supervisor_running)
-    account=(status or {}).get('account_type','UNKNOWN').upper(); paused=(ROOT/'STOP').exists(); stop_mode=stop_state(ROOT)
-    mt5_connected=bool((status or {}).get('mt5_connected',0)) and not stale
-    if stop_mode=='halt' and not process_running:
-        status_text='⛔ Tam dayandırılıb (HALT) · avtomatik başlamayacaq'; status_kind='bad'
-    elif not process_running:
-        status_text='🔴 Bot dayanıb'; status_kind='bad'
-    elif stale:
-        status_text='🔴 Bot cavab vermir · son ürək döyüntüsü 60 saniyədən köhnədir'; status_kind='bad'
-    elif not mt5_connected:
-        status_text='🔴 MT5 ilə əlaqə yoxdur'; status_kind='bad'
-    elif status and not bool(status.get('trade_allowed',1)):
-        status_text='🔴 MT5-də avtomatik ticarət icazəsi bağlıdır'; status_kind='bad'
-    elif paused:
-        status_text='🟡 Fasilədə · yeni əmr açılmır, açıq mövqelər idarə olunur'; status_kind='warn'
-    else:
-        status_text=f'🟢 Bot işləyir · {account if account == "DEMO" else "Hesab"} hesab'; status_kind='good'
-    try:
-        raw_groups=json.loads((status or {}).get('scan_groups_open') or '{}')
-        group_labels={'forex':'Valyuta','metals':'Metallar','indices':'İndekslər','energy':'Enerji','crypto':'Kripto','stocks':'Səhmlər','other':'Digər'}
-        opened_groups=', '.join(group_labels.get(group,group) for group,count in raw_groups.items() if int(count)>0) or 'Hazırda açıq qrup yoxdur'
-    except (ValueError,TypeError): opened_groups='Bazar qrupları məlum deyil'
-    st.markdown(ui.hero(status_text,status_kind,f'Açıq bazarlar: {opened_groups}'),unsafe_allow_html=True)
-    restart_count=queries.get_supervisor_restart_count(today_start,today_end,DB_PATH)
-    runtime=runtime_label(_APP_CONFIG)
-    brain_state=brain_overview(_APP_CONFIG,DATA_DIR)
-    st.markdown(ui.pills([(f'Hesab: {account if account in {"DEMO","REAL"} else "naməlum"}','info' if account=='DEMO' else 'warn'),
-                          (runtime['text'],runtime['state']),
-                          ('MT5 qoşulub' if mt5_connected else 'MT5 qoşulmayıb','good' if mt5_connected else 'bad'),
-                          (f'Nəzarətçi {"işləyir" if supervisor_running else "dayanıb"} · bu gün {restart_count} restart','good' if supervisor_running else 'neutral'),
-                          (brain_state['title'],brain_state['state']),
-                          (('Telegram bildirişləri aktivdir','good') if os.getenv('TELEGRAM_BOT_TOKEN') and os.getenv('TELEGRAM_CHAT_ID') else ('Telegram bildirişləri söndürülüb','warn'))]),unsafe_allow_html=True)
-    if runtime['place']=='Linux server' and not os.getenv('DASHBOARD_PASSWORD'):
-        st.warning('Panel serverdə parolsuz işləyir. Telefondan və ya internetdən açmazdan əvvəl .env faylında DASHBOARD_PASSWORD təyin edin.')
-    news_events=[row for row in queries.get_recent_events(DB_PATH,100) if row.get('source')=='news']
-    active_calendar=next((row for row in news_events if 'Calendar source active' in row.get('message','')),None)
-    news_warning=next((row for row in news_events if row.get('level')=='WARNING' and ('calendar' in row.get('message','').lower() or 'təqvim' in row.get('message','').lower())),None)
-    if active_calendar:
-        st.caption(f"Xəbər təqvimi: {active_calendar['message'].split('Calendar source active · ',1)[-1]} · son yenilənmə {local_time(active_calendar['time'])}")
-    if news_warning:
-        st.warning('MT5 təqvimi və internet təqvimi əlçatan deyil. USD/EUR/GBP/JPY ilə əlaqəli alətlərdə 12:30–14:30 UTC aralığında yeni əməliyyatlar bloklanır.')
+    top=st.columns([5,1])
+    with top[1]: phone=_phone_toggle()
+    with top[0]: page=_page()
+    # Live pages refresh; forms (settings) and history filters are not interrupted.
+    if page in {'overview','positions','system'}:
+        st_autorefresh(interval=10000 if phone else 2000,key='dashboard_refresh')
+    ctx=Ctx(phone)
+    _header(ctx)
+    {'overview':_view_overview,'positions':_view_positions,'history':_view_history,'settings':_view_settings,'brain':_view_brain,'system':_view_system}[page](ctx)
 
-    tab_main, tab_report, tab_analysis, tab_prepare, tab_detail, tab_brain, tab_pipeline = st.tabs(['Əsas', 'Hesabat', 'Analiz', 'Hazırlıq', 'Ətraflı', 'Beyin', 'Necə işləyir'])
-    with tab_pipeline:
-        st.subheader('Botun iş axını')
-        st.graphviz_chart('''digraph pipeline {
-          graph [rankdir=TB, bgcolor="transparent", pad="0.2", nodesep="0.28", ranksep="0.38"];
-          node [shape=box, style="rounded,filled", color="#6b7280", fillcolor="#eff6ff", fontname="Segoe UI", fontsize=10];
-          edge [color="#64748b", arrowsize=0.7];
-          data [label="MT5 · kotirovka / şam / tarixçə"];
-          scan [label="Skaner · sessiya / spred / hərəkət"];
-          features [label="Xüsusiyyətlər · bazar konteksti"];
-          strategy [label="Strategiyalar · MTF siqnalları"];
-          filters [label="Xəbər · xərc · confluence · sıralama"];
-          gates [label="Bot qapıları · brain shadow · qoruma"];
-          sizing [label="Gərgin stop həcmi · portfel riski · marja"];
-          order [label="İcraçı · broker yoxlaması · MT5 sifarişi"];
-          manage [label="Mövqe sinxronu · stop / hədəf / çıxış"];
-          review [label="Nəticə və proses icmalı · DB / hesabat"];
-          schedule [label="Supervisor · backup / log təmizliyi / watchdog"];
-          weekly [label="Həftəlik icmal · model təlimi təxirə salınıb · bandit skan sırasını dəyişir"];
-          data -> scan -> features -> strategy -> filters -> gates -> sizing -> order -> manage -> review;
-          review -> data [label="yeni dövr", fontsize=8];
-          schedule -> data [style=dashed, label="botu nəzarətdə saxlayır", fontsize=8];
-          review -> weekly [style=dashed];
-        }''', width='stretch', alt='MT5 bazar məlumatından sifarişə və sonrakı icmala qədər botun axını')
-        st.markdown('''**Qısa izah.** Bot öz MT5 sessiyasından bazar məlumatı alır və tarixçəni dövrlər ərzində kiçik hissələrlə yeniləyir. Skaner alətləri və strategiya siqnallarını yoxlayır; beyin hazırda müşahidə rejimindədir. Giriş sağlamlıq, xərc, qoruma və portfel risk qapılarından keçəndə həcm gərgin stop xərci ilə hesablanır və icraçı brokerə sifariş göndərir. Açıq mövqelər idarə olunur, bağlanmış əməliyyatlar nəticə və qərar prosesi üzrə qeydə alınır. Bot gündəlik yekun və həftəlik performans icmalı yaradır; supervisor ehtiyat nüsxə, log təmizliyi, yaddaş və heartbeat yoxlamalarını aparır. Həftəlik model yenidən təlimi təxirə salınıb.''')
-
-        st.subheader('Son 1 saatın canlı funnel-i')
-        funnel=queries.get_pipeline_funnel((datetime.now(timezone.utc)-timedelta(hours=1)).isoformat(),DB_PATH)
-        if not funnel.get('available'):
-            st.info('Skan funnel qeydləri hələ yaradılmayıb; botun yenilənmiş prosesi başladıqdan sonra görünəcək.')
-        else:
-            counts=funnel.get('counts',{})
-            stages=[('Rəmzlər skan edilib','symbols_scanned'),('İlkin filtri keçib','filters_passed'),('Siqnal yaradılıb','signals'),('Riskdən keçib · icra cəhdi','passed_risk'),('Sifariş açılıb','orders')]
-            cols=st.columns(len(stages))
-            for col,(label,key) in zip(cols,stages): col.metric(label,f"{int(counts.get(key,0)):,}")
-            st.caption(f"Tamamlanmış skan dövrləri: {funnel.get('cycles',0)} · Riskdən keçib sayı botun giriş qapılarını keçərək icraçıya çatan namizədlərdir; broker yenə də sifarişi rədd edə bilər.")
-            rejection_labels=[('Filtrlər','filters'),('Siqnal mərhələsi','signals'),('Bot risk qapıları','risk'),('Broker / icraçı','orders')]
-            reason_cols=st.columns(4)
-            for col,(label,key) in zip(reason_cols,rejection_labels):
-                reason_counts=funnel.get('rejections',{}).get(key,{})
-                top=max(reason_counts.items(),key=lambda item:item[1]) if reason_counts else None
-                col.markdown(f"**{label} · əsas imtina səbəbi**")
-                col.write(f"{translate_message(top[0])} · {top[1]}" if top else 'Son 1 saatda imtina yoxdur.')
-
-    with tab_main:
-        opened=queries.get_open_positions(DB_PATH); now_utc=datetime.now(timezone.utc)
-        for row in opened:
-            row['duration']=format_duration((now_utc-_as_utc(row['open_time'])).total_seconds()/60)
-            row['extension_status']='Uzadılıb' if int(row.get('extended_minutes') or 0)>0 else '—'
-            row['direction_label']=direction_label(row['direction']); row['strategy_label']=strategy_label(row['strategy'])
-            row['net_result']=float(row.get('profit') or 0)+float(row.get('commission') or 0)+float(row.get('swap') or 0)
-        floating=sum(row['net_result'] for row in opened)
-        # Loss limits use UTC days/weeks exactly like the bot does.
-        utc_day=datetime.combine(now_utc.date(),dt_time.min,tzinfo=timezone.utc); utc_week=utc_day-timedelta(days=utc_day.weekday())
-        magic=_APP_CONFIG.get('magic_number')
-        pnl_utc_day=queries.get_pnl_since(utc_day.isoformat(),DB_PATH,magic)['pnl']
-        pnl_utc_week=queries.get_pnl_since(utc_week.isoformat(),DB_PATH,magic)['pnl']
-        balance=snapshot.get('balance') if snapshot else None; equity=snapshot.get('equity') if snapshot else None
-        risk=risk_overview(_APP_CONFIG,account,balance,pnl_utc_day,pnl_utc_week,floating)
-        today_all=queries.get_pnl_since(today_start,DB_PATH,magic)   # Baku day, every mode incl. exploration
-        daily_result=float(today_all['pnl'])+floating
-        tone=lambda value:'good' if value>0 else 'bad' if value<0 else ''
-        st.markdown(ui.kpis([('Balans',format_money(balance),'',f'Kapital {format_money(equity)}'),
-                             ('Bu gün',format_money(daily_result,signed=True),tone(daily_result),f'{today_all["trades"]} bağlanıb · {today_all["win_rate"]:.0%} qazanc · açıqlar daxil'),
-                             ('Açıq mövqelər',str(len(opened)),'',f'Cari nəticə {format_money(floating,signed=True)}'),
-                             ('Hər əmrdə risk',f'{risk["risk_pct"]:g}%','',f'≈ {format_money(risk["risk_money"])} · {risk["account"]} hesab')]),unsafe_allow_html=True)
-        limit_cols=st.columns(1 if phone else 2)
-        for col,(label,key) in zip(limit_cols*2,[('Gündəlik zərər limiti (UTC)','daily'),('Həftəlik zərər limiti','weekly')]):
-            item=risk[key]
-            with col:
-                st.markdown(ui.limit_bar(label,item['used_share'],f'{item["used_share"]:.0%} istifadə olunub',
-                    f'Zərər {format_money(item["loss_money"])} / limit {format_money(item["limit_money"])} ({item["limit_pct"]:g}%) · qalıb {format_money(item["left_money"])}'),unsafe_allow_html=True)
-        if not risk['known']: st.caption('Hesab növü hələ məlum deyil; limitlər bot qoşulandan sonra dəqiqləşəcək.')
-        elif risk['account']=='DEMO':
-            st.caption(f"Kiçik balans: {risk['risk_pct']:g}% minimum lota çatmırsa, bot minimum lotla girir, əgər onun riski balansın {float(_APP_CONFIG.get('demo_risk',{}).get('min_lot_max_risk_pct',3)):g}%-ni keçmirsə.")
-        elif balance and risk['risk_money']<1:
-            st.info(f"Real hesabda hər əmrə cəmi {format_money(risk['risk_money'])} risk düşür: adi hesabda minimum lot bundan böyükdür və bot əmr açmayacaq. Kiçik real balans üçün XM Micro hesabı istifadə edin.")
-        controls=st.columns([1.4,1.15,1.4])
-        if st.session_state.get('action_message'):
-            message=st.session_state.pop('action_message'); level=st.session_state.pop('action_level','info')
-            getattr(st,level if level in {'success','warning','error','info'} else 'info')(message)
-        with controls[0]:
-            if st.button('⏹ Botu dayandır' if process_running else '▶ Botu başlat',key='main_bot_toggle',use_container_width=True):
-                if process_running:
-                    try:
-                        queries.enqueue_command('stop',DB_PATH,ttl_seconds=_command_ttl())
-                        st.session_state.action_message='Dayandırma əmri göndərildi.'; st.session_state.action_level='success'
-                    except Exception as exc:
-                        st.session_state.action_message=f'Dayandırma əmri göndərilmədi: {translate_message(exc)}'; st.session_state.action_level='error'
-                else:
-                    ok,message=_start_bot()
-                    st.session_state.action_message='Botun başladılması istənildi.' if ok else f'Bot başlamadı: {translate_message(message)}'
-                    st.session_state.action_level='success' if ok else 'error'
-                st.rerun()
-        with controls[1]:
-            paused=(ROOT/'STOP').exists()
-            if st.button('▶ Davam et' if paused else '⏸ Fasilə',key='pause_toggle',disabled=not process_running,use_container_width=True):
-                command='resume' if paused else 'pause'
-                try:
-                    queries.enqueue_command(command,DB_PATH,ttl_seconds=_command_ttl())
-                    st.session_state.action_message='Davam etmə əmri göndərildi.' if paused else 'Fasilə əmri göndərildi.'
-                    st.session_state.action_level='success'
-                except Exception as exc:
-                    st.session_state.action_message=f'Əmr göndərilmədi: {translate_message(exc)}'; st.session_state.action_level='error'
-                st.rerun()
-        with controls[2]:
-            with st.expander('Hamısını bağla və dayan',expanded=False):
-                confirm=st.checkbox('Bütün açıq mövqelərin bağlanmasını təsdiq edirəm',key='confirm_close_all')
-                if st.button('Hamısını bağla və dayan',key='close_all_stop',disabled=not (confirm and process_running),use_container_width=True):
-                    try:
-                        queries.enqueue_command('close_all_stop',DB_PATH,ttl_seconds=_command_ttl())
-                        st.session_state.action_message='Bütün mövqeləri bağlama və dayandırma əmri göndərildi.'; st.session_state.action_level='success'
-                    except Exception as exc:
-                        st.session_state.action_message=f'Əmr göndərilmədi: {translate_message(exc)}'; st.session_state.action_level='error'
-                    st.rerun()
-
-        with st.expander('Yaxın xəbərlər',expanded=False):
-            calendar_rows=[row for row in queries.get_recent_events(DB_PATH,100) if row.get('source')=='news' and 'Yaxın xəbər ·' in row.get('message','')]
-            if calendar_rows:
-                st.dataframe(pd.DataFrame([{'Təqvim yenilənib':local_time(row['time']),'Xəbər':row['message'].replace('Yaxın xəbər · ','')} for row in calendar_rows[:20]]),use_container_width=True,hide_index=True)
-            else: st.caption('Növbəti 24 saat üçün təzə xəbər təqvimi yoxdur.')
-
-        diversity=queries.get_today_diversity(today_start,today_end,DB_PATH)
-        st.caption(f"Bu gün: {diversity['symbols']} fərqli alət, {diversity['groups']} qrup · istifadə olunan marja {format_money(snapshot.get('margin') if snapshot else None)}")
-
-        st.subheader('Açıq mövqelər')
-        if opened:
-            open_frame=pd.DataFrame([{'Bilet':r['ticket'],'Alət':r['symbol'],'Həcm':r['volume'],'SL':r['sl'],'TP':r['tp'],'İstiqamət':r['direction_label'],'Nəticə':r['net_result'],'Açıq müddət':r['duration'],'Strategiya':r['strategy_label'],'Rejim':r['mode'],'Status':r['extension_status']} for r in opened])
-            _table(open_frame,phone,['Alət','İstiqamət','Nəticə','Açıq müddət'],money='Nəticə')
-            _position_charts(opened,phone)
-        else: st.caption('Açıq bot mövqeyi yoxdur.')
-
-        st.subheader('Bu gün bağlanan əməliyyatlar')
-        closed=queries.get_closed_trades(today_start,today_end,DB_PATH)
-        if closed:
-            closed_frame=pd.DataFrame([{'Saat':local_time(r['close_time']),'Alət':r['symbol'],'İstiqamət':direction_label(r['direction']),'Nəticə':r['net_profit'],'Səbəb':close_reason_label(r['close_reason'])} for r in closed])
-            _table(closed_frame,phone,['Saat','Alət','Nəticə'],money='Nəticə')
-        else: st.caption('Bu gün bağlanan əməliyyat yoxdur.')
-
-        external=queries.get_external_open_positions(DB_PATH)
-        with st.expander(f'Xarici mövqelər ({len(external)})',expanded=bool(external) and not phone):
-            if external:
-                external_frame=pd.DataFrame([{'Bilet':r['ticket'],'Alət':r['symbol'],'Magic':r['magic'],'Həcm':r['volume'],'SL':r['sl'],'TP':r['tp'],'İstiqamət':direction_label(r['direction']),'Nəticə':float(r.get('profit') or 0)+float(r.get('swap') or 0),'Şərh':r.get('comment') or ''} for r in external])
-                st.caption('Bu mövqelər başqa magic nömrəsi ilə açılıb və yalnız izləmə üçün göstərilir.')
-                _table(external_frame,phone,['Alət','İstiqamət','Nəticə'],money='Nəticə')
-            else: st.caption('Xarici açıq mövqe yoxdur.')
-
-        exploration=queries.get_exploration_trades(today_start,today_end,DB_PATH)
-        st.subheader('Kəşf əməliyyatları')
-        if exploration:
-            exploration_frame=pd.DataFrame([{'Saat':local_time(row['open_time']),'Alət':row['symbol'],'İstiqamət':direction_label(row['direction']),'Nəticə':row['net_profit'],'Status':'Açıqdır' if row['status']=='open' else close_reason_label(row.get('close_reason'))} for row in exploration])
-            _table(exploration_frame,phone,['Saat','Alət','Nəticə'],money='Nəticə')
-            closed_exploration=[row for row in exploration if row['status']=='closed']
-            if closed_exploration:
-                st.caption(f"Kəşf əməliyyatlarının nəticəsi: {sum(row['net_profit'] for row in closed_exploration):+.2f} $ · {len(closed_exploration)} bağlanmış əməliyyat")
-        else: st.caption('Bu gün kəşf əməliyyatı yoxdur.')
-        fwd_stats=queries.get_exploration_forward_tracking(DB_PATH)
-        if fwd_stats:
-            st.markdown('##### Kəşf Ailələri: Canlı Nəticələr vs Backtest Meyarları')
-            fwd_df=pd.DataFrame([{'Ailə':s['name'],'Cəmi/Açıq':f"{s['total_trades']}/{s['open_trades']}",'Canlı Win%':s['win_rate'],'Canlı EV':s['ev_r'],'Backtest EV':s['bt_ev'],'Backtest Win%':s['bt_win']} for s in fwd_stats])
-            st.dataframe(fwd_df,use_container_width=True,hide_index=True)
-        weekend_control=queries.get_weekend_control(DB_PATH)
-        if weekend_control and weekend_control.get('disabled_until'):
-            st.warning(f"Həftəsonu rejimi mənfi nəticəyə görə {local_time(weekend_control['disabled_until'])} tarixinədək söndürülüb.")
-
-        st.subheader('Bu günkü balans dəyişməsi')
-        curve=queries.get_equity_curve(today_start,today_end,DB_PATH)
-        if curve:
-            curve_frame=pd.DataFrame(curve); curve_frame['Saat']=pd.to_datetime(curve_frame.time,utc=True).dt.tz_convert(AZ_TZ)
-            st.area_chart(curve_frame.set_index('Saat')[['equity']].rename(columns={'equity':'Kapital'}),height=160 if phone else 200)
-        else: st.caption('Bu gün üçün kapital qeydi yoxdur.')
-
-    with tab_report:
-        monthly_path=ROOT/'docs'/'MONTHLY_REPORT.md'
-        st.subheader('Aylıq DEMO araşdırma hesabatı')
-        if monthly_path.exists(): st.markdown(monthly_path.read_text(encoding='utf-8'))
-        else: st.caption('Aylıq hesabat növbəti ayın 1-də yaradılacaq.')
-        tracking=queries.get_exploration_forward_tracking(DB_PATH)
-        if tracking:
-            st.subheader('Canlı DEMO nəticələri və backtest müqayisəsi · forex + qızıl')
-            st.dataframe(pd.DataFrame(tracking),use_container_width=True,hide_index=True)
-        now_utc=datetime.now(timezone.utc); seven_start=(now_utc-timedelta(days=7)).isoformat(); all_start='1970-01-01T00:00:00+00:00'
-        for label,period_start,period_end in [('Bu gün',today_start,today_end),('Son 7 gün',seven_start,now_utc.isoformat()),('Bütün tarix',all_start,now_utc.isoformat())]:
-            report=queries.get_performance_report(period_start,period_end,DB_PATH); overall=report['overall']
-            st.subheader(label)
-            cards=st.columns(6)
-            cards[0].metric('Əməliyyatlar',overall['trades']); cards[1].metric('Qazanma faizi',f"{overall['win_rate']:.1%}")
-            cards[2].metric('Orta qazanc',format_money(overall['average_win'])); cards[3].metric('Orta zərər',format_money(overall['average_loss']))
-            cards[4].metric('Gözlənilən nəticə',format_money(overall['expectancy'],signed=True)); cards[5].metric('Cəmi nəticə',format_money(overall['total_pnl'],signed=True))
-            drawdown=f"{overall['max_drawdown_pct']:.2f}%" if overall['max_drawdown_pct'] is not None else 'Məlumat yoxdur'
-            st.caption(f"Maksimum azalma: {drawdown} · təxmini əməliyyat xərcləri: {format_money(overall['estimated_costs'])}")
-            for title,key in [('Strategiyaya görə','by_strategy'),('Aktiv qrupuna görə','by_asset_group'),('Bağlanma səbəbinə görə','by_close_reason')]:
-                rows=report[key]
-                if rows:
-                    st.markdown(f'**{title}**')
-                    st.dataframe(pd.DataFrame([{'Ad':name,'Əməliyyat':v['trades'],'Qazanma %':f"{v['win_rate']:.1%}",'Orta qazanc':format_money(v['average_win']),'Orta zərər':format_money(v['average_loss']),'Gözlənilən nəticə':format_money(v['expectancy'],signed=True),'Nəticə':format_money(v['total_pnl'],signed=True),'Komissiya':format_money(v['estimated_costs'])} for name,v in rows.items()]),use_container_width=True,hide_index=True)
-        st.subheader('Son 30 günün günlük nəticəsi')
-        daily=queries.get_daily_pnl(DB_PATH,30)
-        if daily:
-            daily_frame=pd.DataFrame(daily); daily_frame['Tarix']=pd.to_datetime(daily_frame.date)
-            st.bar_chart(daily_frame.set_index('Tarix')[['pnl']].rename(columns={'pnl':'Nəticə ($)'}),height=220)
-        else: st.caption('Günlük nəticə məlumatı yoxdur.')
-        stored=queries.get_daily_report_rows(DB_PATH,30)
-        if stored:
-            st.subheader('Saxlanmış günlük hesabatlar')
-            st.dataframe(pd.DataFrame([{'Tarix':r['date'],'Nəticə':format_money(r['payload'].get('pnl'),signed=True),'Əməliyyat':r['payload'].get('trades_count',0)} for r in stored]),use_container_width=True,hide_index=True)
-
-    with tab_analysis:
-        st.subheader('Xüsusiyyətlərin müşahidə nəticələri')
-        st.info('Bunlar bağlanmış əməliyyatlardan hesablanan müşahidələrdir. Hazırda heç biri ticarət qərarlarında istifadə olunmur.')
-        impact=queries.get_feature_impact(DB_PATH)
-        if impact:
-            st.dataframe(pd.DataFrame([{'Xüsusiyyət':feature_label(row['feature']),'Əməliyyat sayı':row['trades'],'Qazanma faizi':f"{row['win_rate']:.1%}",'Fərq (baseline ilə)':f"{row['win_rate_difference']:+.1%}",'Orta nəticə':format_money(row['expectancy'],signed=True),'Sübut olunub?':'Bəli' if row['meaningful'] else 'Hələ az məlumat' if row['trades']<30 else 'Xeyr'} for row in impact]),use_container_width=True,hide_index=True)
-        else: st.caption('Xüsusiyyətlər üzrə müqayisə üçün hələ bağlanmış əməliyyat yoxdur.')
-
-    with tab_prepare:
-        now_utc=datetime.now(timezone.utc); seven_start=(now_utc-timedelta(days=7)).isoformat(); seven_end=now_utc.isoformat()
-        st.subheader('Son 7 gün üzrə hazırlıq yoxlaması')
-        for label,passed in readiness_checks(seven_start,seven_end,DB_PATH):
-            st.markdown(('✅ ' if passed else '🔴 ')+label)
-        dashboard_cfg=yaml.safe_load((ROOT/'config.yaml').read_text(encoding='utf-8')).get('dashboard',{})
-        sim_cols=st.columns(2)
-        balance=sim_cols[0].number_input('Real hesab məbləği ($)',min_value=1.0,value=float(dashboard_cfg.get('real_balance_default',100)),step=10.0)
-        risk_pct=sim_cols[1].number_input('Planlaşdırılan risk (%)',min_value=.01,value=float(dashboard_cfg.get('real_risk_pct_default',1.0)),step=.1)
-        raw=yaml.safe_load((ROOT/'config.yaml').read_text(encoding='utf-8'))
-        history_dir=Path(raw.get('history',{}).get('data_dir','data/history')); history_dir=history_dir if history_dir.is_absolute() else ROOT/history_dir
-        try: specs=json.loads((history_dir/'symbol_specs.json').read_text(encoding='utf-8'))
-        except (OSError,ValueError): specs={}
-        signal_rows=queries.get_signals_period(seven_start,seven_end,DB_PATH)
-        sim=simulate_small_account(signal_rows,balance,risk_pct,specs)
-        st.info(f"Son 7 gündəki {sim['signals']} siqnaldan bu kapital və risklə {sim['possible']} əməliyyat açmaq olardı; {sim['min_lot_rejected']} siqnal minimum lot riskə görə rədd edilərdi. {sim['unavailable']} siqnal üçün broker spesifikasiyası və ya düzgün SL yoxdur.")
-
-    with tab_detail:
-        with st.expander('Ətraflı məlumat',expanded=False):
-            stats=status or {}; heartbeat_age=(datetime.now(timezone.utc)-_as_utc(status['time'])).total_seconds() if status and status.get('time') else None
-            st.subheader('Hesab və skanlama')
-            diversity=queries.get_today_diversity(today_start,today_end,DB_PATH)
-            group_labels={'forex':'Valyuta','metals':'Metallar','indices':'İndekslər','energy':'Enerji','crypto':'Kripto','stocks':'Səhmlər','other':'Digər'}
-            st.caption('Bu gün qruplar üzrə əməliyyatlar')
-            if diversity['per_group']:
-                st.table(pd.DataFrame([{'Qrup':group_labels.get(group,group),'Əməliyyat sayı':count} for group,count in sorted(diversity['per_group'].items(),key=lambda item:-item[1])]))
-                st.caption('Bu gün ən çox işlənən alətlər: '+', '.join(f'{name} ({count})' for name,count in diversity['top_symbols']))
-            else: st.caption('Bu gün hələ bağlanmış əməliyyat yoxdur.')
-            detail_metrics=st.columns(4)
-            detail_metrics[0].metric('Kapital',format_money(snapshot.get('equity') if snapshot else None))
-            detail_metrics[1].metric('Sərbəst marja',format_money(snapshot.get('free_margin') if snapshot else None))
-            detail_metrics[2].metric('MT5 əlaqəsi','Aktivdir' if mt5_connected else 'Yoxdur')
-            detail_metrics[3].metric('Ürək döyüntüsü',f'{heartbeat_age:.0f} san' if heartbeat_age is not None else 'Məlumat yoxdur')
-            st.caption(f'Skanlama: cəmi {stats.get("scan_total",0)} · yoxlanıb {stats.get("scan_scanned",0)} · ticarətə uyğun {stats.get("scan_stage1_passed",0)} · təhlil edilən alətlər {stats.get("scan_top_n",0)} · siqnallar {stats.get("scan_signals",0)} · {float(stats.get("scan_seconds",0) or 0):.2f} san')
-            st.subheader('Gündəlik iş qrafiki')
-            schedule_rows=queries.get_scheduler_status(DB_PATH)
-            task_names={'hourly_history':'Saatlıq tarixçə','daily_backup':'Gündəlik ehtiyat nüsxə','weekly_retrain':'Həftəlik beyin yenilənməsi','weekly_vacuum':'Həftəlik DB təmizliyi'}
-            st.table(pd.DataFrame([{'İş':task_names.get(row['task'],row['task']),'Son icra':local_time(row['last_run']) if row['last_run'] else 'Hələ icra edilməyib','Növbəti icra (UTC)':row['next_run'],'Vəziyyət':row['status']} for row in schedule_rows]))
-            target=int(_APP_CONFIG.get('scanner',{}).get('target_open_positions',15))
-            st.caption(f'Açıq bot mövqeləri: {len(opened)} / {target} hədəf (hədəf məcburi əməliyyat sayı deyil)')
-            skips=queries.get_top_skip_reasons_since((datetime.now(timezone.utc)-timedelta(hours=1)).isoformat(),DB_PATH,5)
-            st.subheader('Son 1 saatın əsas imtina səbəbləri')
-            if skips: st.dataframe(pd.DataFrame([{'Səbəb':translate_message(r['skip_reason']),'Say':r['count']} for r in skips]),use_container_width=True,hide_index=True)
-            else: st.caption('Son 1 saatda imtina edilmiş siqnal yoxdur.')
-            adaptive=queries.get_adaptive_gates(DB_PATH)
-            st.subheader('Müvəqqəti söndürülən strategiyalar və qruplar')
-            if adaptive:
-                group_names={'forex':'Valyuta','metals':'Metallar','indices':'İndekslər','energy':'Enerji','crypto':'Kripto','stocks':'Səhmlər','other':'Digər'}
-                st.table(pd.DataFrame([{'Növ':'Strategiya' if r['scope']=='strategy' else 'Alət qrupu','Ad':strategy_label(r['name']) if r['scope']=='strategy' else group_names.get(r['name'],r['name']),'Son 20 əməliyyatın gözlənilən nəticəsi':format_money(r['expectancy'],signed=True),'Səbəb':'Son bağlanmış əməliyyatlardakı orta nəticə mənfidir','Nümunə':r['sample_size'],'Söndürülüb':'Bəli · '+local_time(r['disabled_until'])} for r in adaptive]))
-            else: st.caption('Hazırda müvəqqəti söndürülən strategiya və qrup yoxdur.')
-            try:
-                import ast
-                rejections=stats.get('scan_rejections') or '{}'; rejections=ast.literal_eval(rejections) if isinstance(rejections,str) else rejections
-            except (ValueError,SyntaxError): rejections={}
-            if rejections: st.table(pd.DataFrame([{'Səbəb':translate_message(k),'Say':v} for k,v in rejections.items()]))
-            try:
-                diagnostics=stats.get('strategy_diagnostics') or '{}'; diagnostics=json.loads(diagnostics) if isinstance(diagnostics,str) else diagnostics
-            except (ValueError,TypeError): diagnostics={}
-            rows=[{'Strategiya':strategy_label(name),'Səbəb':translate_message(reason),'Say':count} for name,counts in diagnostics.items() for reason,count in counts.items()]
-            if rows: st.table(pd.DataFrame(rows))
-
-            st.subheader('Ətraflı əməliyyat məlumatı')
-            selected=st.date_input('Tarix · Bakı vaxtı',value=selected,key='detail_date',format='DD.MM.YYYY')
-            detail_start=datetime.combine(selected,dt_time.min,tzinfo=AZ_TZ).astimezone(timezone.utc).isoformat()
-            detail_end=(datetime.combine(selected,dt_time.min,tzinfo=AZ_TZ)+timedelta(days=1)).astimezone(timezone.utc).isoformat()
-            detail_closed=queries.get_closed_trades(detail_start,detail_end,DB_PATH)
-            if detail_closed:
-                full_closed=pd.DataFrame([{'Saat':local_time(r['close_time']),'Alət':r['symbol'],'İstiqamət':direction_label(r['direction']),'Həcm':r['volume'],'Açılış qiyməti':r['open_price'],'Bağlanış qiyməti':r['close_price'],'SL':r.get('sl'),'TP':r.get('tp'),'Nəticə':r['net_profit'],'Proses':('Yaxşı' if r.get('process_review',{}).get('good_process') else 'Naməlum'),'Nəticə (R)':r.get('process_review',{}).get('outcome_r'),'Səbəb':close_reason_label(r['close_reason']),'Strategiya':strategy_label(r['strategy'])} for r in detail_closed])
-                st.table(full_closed.style.format({'Nəticə':lambda value:format_money(value,signed=True)}).map(_money_color,subset=['Nəticə']))
-            else: st.caption('Seçilən tarixdə bağlanan əməliyyat yoxdur.')
-            if opened:
-                full_open=pd.DataFrame([{'Alət':r['symbol'],'İstiqamət':direction_label(r['direction']),'Həcm':r['volume'],'Açılış qiyməti':r['open_price'],'Nəticə':r['net_result'],'SL':r['sl'],'TP':r['tp'],'Açıq vaxt':local_time(r['open_time']),'Strategiya':r['strategy_label']} for r in opened])
-                st.table(full_open.style.format({'Nəticə':lambda value:format_money(value,signed=True)}).map(_money_color,subset=['Nəticə']))
-            st.subheader('Qismən bağlamalar')
-            partials=queries.get_partial_closes(detail_start,detail_end,DB_PATH)
-            if partials:
-                partial_frame=pd.DataFrame([{'Saat':local_time(r['time']),'Alət':r['symbol'],'Həcm':r['volume'],'Qiymət':r['price'],'Nəticə':float(r['profit'] or 0)+float(r['commission'] or 0)+float(r['swap'] or 0),'Səbəb':close_reason_label(r['reason'])} for r in partials])
-                st.table(partial_frame.style.format({'Nəticə':lambda value:format_money(value,signed=True)}).map(_money_color,subset=['Nəticə']))
-            else: st.caption('Seçilən tarixdə qismən bağlama yoxdur.')
-
-            st.subheader('Siqnallar')
-            signals=queries.get_latest_signals(DB_PATH,50)
-            if signals:
-                signal_rows=[{'Saat':local_time(r['time']),'Alət':r['symbol'],'Strategiya':strategy_label(r['strategy']),'İstiqamət':direction_label(r['direction']),'Bal':r.get('score',0),'Əminlik':f'{float(r.get("confidence") or 0):.1%}','İcra edildi':'Bəli' if r.get('taken') else 'Xeyr','Səbəb':translate_message(r.get('skip_reason'))} for r in signals]
-                st.table(pd.DataFrame(signal_rows))
-            else: st.caption('Qeydə alınmış siqnal yoxdur.')
-
-            st.subheader('Son əmrlər')
-            commands=queries.get_recent_commands(DB_PATH,10)
-            command_names={'pause':'Fasilə','resume':'Davam et','stop':'Dayandır','close_all':'Hamısını bağla','close_all_stop':'Hamısını bağla və dayan'}
-            command_status={'pending':'Gözləyir','running':'İcra olunur','done':'Tamamlandı','failed':'Uğursuz','expired':'Vaxtı bitib'}
-            if commands:
-                st.table(pd.DataFrame([{'Vaxt':local_time(c.get('created_at') or c.get('time')),'Əmr':command_names.get(c['command'],c['command']),'Vəziyyət':command_status.get(c['status'],c['status']),'Məlumat':translate_message(c.get('message'))} for c in commands]))
-            else: st.caption('Son əmr yoxdur.')
-
-            st.subheader('Bot hadisələri')
-            events=queries.get_recent_events(DB_PATH,30)
-            level_names={'INFO':'MƏLUMAT','WARNING':'XƏBƏRDARLIQ','ERROR':'XƏTA','CRITICAL':'CİDDİ XƏTA'}
-            source_names={'bot':'Bot','scanner':'Skaner','executor':'İcraçı','mt5_client':'MT5'}
-            if events: st.table(pd.DataFrame([{'Vaxt':local_time(e['time']),'Səviyyə':level_names.get(e['level'],e['level']),'Mənbə':source_names.get(e['source'],e['source']),'Məlumat':translate_message(e['message'])} for e in events]))
-            else: st.caption('Bot hadisəsi qeydə alınmayıb.')
-
-            st.subheader('Son 30 günün nəticəsi')
-            daily_stats=queries.get_daily_pnl(DB_PATH,30)
-            if daily_stats:
-                daily_frame=pd.DataFrame(daily_stats); daily_frame['Tarix']=pd.to_datetime(daily_frame.date)
-                st.bar_chart(daily_frame.set_index('Tarix')[['pnl']].rename(columns={'pnl':'Nəticə ($)'}),height=220)
-            else: st.caption('Günlük statistika hələ yoxdur.')
-
-    with tab_brain:
-        weekly_learning=next((row for row in queries.get_recent_events(DB_PATH,100) if 'Bu həftə öyrəndiklərim' in row.get('message','')),None)
-        st.subheader('Bu həftə öyrəndiklərim')
-        if weekly_learning: st.info(translate_message(weekly_learning['message']))
-        else: st.caption('Həftəlik yekun hesabat hələ yoxdur.')
-        brain_cfg=_APP_CONFIG.get('brain',{}); gate_path=DATA_DIR/'brain'/'gate.json'
-        try: gate=json.loads(gate_path.read_text(encoding='utf-8'))
-        except (OSError,ValueError): gate={'status':'FAIL','reasons':['Yekun test qiymətləndirməsi hələ aparılmayıb.']}
-        live_gate_path=DATA_DIR/'brain'/'live_gate.json'
-        try: live_gate=json.loads(live_gate_path.read_text(encoding='utf-8'))
-        except (OSError,ValueError): live_gate={}
-        if brain_state['state']=='good': st.success(f"{brain_state['title']} · {brain_state['text']}")
-        else:
-            st.warning(f"{brain_state['title']} · {brain_state['text']}")
-            for reason in brain_state['reasons']: st.caption('• '+reason)
-            for reason in gate.get('reasons',[]): st.caption('• '+translate_message(reason))
-        brain_risk=risk_overview(_APP_CONFIG,account,None,0,0,0)
-        if brain_risk['brain_max_pct']>0:
-            st.caption(f"Beyin aktiv olanda risk aralığı ({brain_risk['account']} hesab): {brain_risk['brain_min_pct']:g}% – {brain_risk['brain_max_pct']:g}% · ardıcıl {int(brain_cfg.get('loss_streak_base_risk',3))} zərərdən sonra baza riskə qayıdır")
-        if live_gate.get('mode')=='shadow': st.error('Canlı sapma qoruyucusu beyni müşahidə rejiminə qaytardı.')
-        if gate.get('evaluated_at'): st.caption('Son qiymətləndirmə: '+local_time(gate['evaluated_at']))
-        calibration=gate.get('metrics',{}).get('calibration',[])
-        st.subheader('Ehtimal kalibrlənməsi')
-        if calibration:
-            cal=pd.DataFrame(calibration).rename(columns={'predicted':'Proqnoz','actual':'Fakt','bucket':'Ehtimal aralığı','samples':'Nümunə sayı'}).set_index('Ehtimal aralığı')
-            st.line_chart(cal[['Proqnoz','Fakt']],height=230)
-        else: st.caption('Test və canlı kalibrlənmə məlumatı yoxdur.')
-        st.subheader('Müqayisə və qatların töhfəsi')
-        ablation=gate.get('metrics',{}).get('ablation',{})
-        if ablation:
-            st.table(pd.DataFrame([{'Model':name,'Əməliyyat':row['trades'],'Qazanma faizi':f"{row['win_rate']:.1%}",'Gözlənilən nəticə (R)':row['expectancy_r'],'Mənfəət əmsalı':row['profit_factor']} for name,row in ablation.items()]))
-        else: st.caption('Ablasiya nəticəsi mövcud deyil.')
-        scanned=int((status or {}).get('scan_scanned',0)); total=int((status or {}).get('scan_total',0)); interval=float(_APP_CONFIG.get('loop',{}).get('interval_seconds',15))
-        rotation=total/max(1,scanned)*interval if total else 0
-        st.metric('Dövriyyə təhlili',f"{int((status or {}).get('scan_top_n',0))} alət təhlil edildi · təxmini tam dövr {rotation:.0f} san")
-        st.subheader('Açıq mövqe üzrə oxşar hallar')
-        if opened:
-            selected_open=st.selectbox('Alət',opened,key='brain_open_symbol',format_func=lambda row:f"{row['symbol']} · {direction_label(row['direction'])}")
-            try:
-                stored=json.loads(selected_open.get('features') or '{}'); cases=stored.get('brain',{}).get('memory',{}).get('cases',[])
-            except (ValueError,TypeError): cases=[]
-            if cases: st.table(pd.DataFrame([{'Alət':case.get('symbol'),'Vaxt':local_time(case.get('time')),'Oxşarlıq məsafəsi':case.get('distance')} for case in cases[:3]]))
-            else: st.caption('Bu mövqe üçün keçmişdə uyğun oxşar hal tapılmayıb.')
-        else: st.caption('Hazırda açıq bot mövqeyi yoxdur.')
 
 if __name__=='__main__': main()

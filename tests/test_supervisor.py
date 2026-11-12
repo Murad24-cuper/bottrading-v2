@@ -109,3 +109,14 @@ def test_crash_handlers_capture_main_and_thread_tracebacks(tmp_path,monkeypatch)
         faulthandler.disable()
         run_bot._crash_file.close()
         sys.excepthook=old_sys; threading.excepthook=old_thread
+
+
+def test_supervisor_restarts_clean_exit_when_restart_requested():
+    calls=[]; events=[]; requests=iter([True,False]); stop={'value':False}
+    def child():
+        calls.append('run')
+        if len(calls)==2: stop['value']=True
+        return 0
+    result=run_restart_supervisor(child,lambda:stop['value'],lambda level,msg:events.append((level,msg)),sleep=lambda _:None,restart_requested=lambda:next(requests))
+    assert result==0 and calls==['run','run']
+    assert any('apply new settings' in msg for _,msg in events)

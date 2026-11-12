@@ -66,3 +66,17 @@ setx TRADINGBOT_SERVER "ec2-user@<server-ip>"
 ```
 
 Real hesaba keçid meyarları: [REAL_ACCOUNT_CHECKLIST.md](REAL_ACCOUNT_CHECKLIST.md).
+
+## Ticarət planı (2026-11-12)
+
+- **Alətlər:** yalnız GOLD, US500, NAS100, US30 (forex çıxarıldı: qısa hərəkətlərdə spred 15–30% yeyirdi).
+- **Saatlar** (yalnız yeni əmrlər; açıq mövqelər hər zaman idarə olunur, `universe.trading_hours`):
+  - US500, NAS100, US30: Nyu-York 09:30–16:00 → Bakı qışda 18:30–01:00, yayda 17:30–00:00.
+  - GOLD: Nyu-York 04:00–17:00 → Bakı qışda 13:00–02:00, yayda 12:00–01:00.
+- **Təkrar əmr qaydaları söndürülüb:** 20 dəq gözləmə yoxdur, alətə gündəlik limit yoxdur, 3 zərərdən sonra
+  24 saat fasilə yoxdur, eyni alətdə bir neçə mövqe ola bilər. Ümumi qorumalar qalır: eyni anda ən çoxu
+  3 mövqe, gündəlik 10% və həftəlik 25% zərər limiti, 6% düşüşdə ümumi fasilə.
+- **Əmr:** SL/TP 30 dəqiqəlik hərəkətə görə (M1 ATR × √30), TP = 1.5 × risk.
+  Stagnation 10 dəq, maksimum saxlama 30 dəq. Demo-da risk 10$ (1000$-ın 1%-i) → TP ≈ +15$.
+- **ABŞ indeksləri bir qrupdur:** eyni anda ən çoxu 2 indeks mövqeyi (`max_positions_per_underlying_group`).
+- **Həftəsonu ticarəti söndürülüb.**

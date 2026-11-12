@@ -83,3 +83,13 @@ def test_dashboard_open_positions_includes_current_account_exploration_hash_symb
     external=queries.get_external_open_positions(path)
     assert [(row['ticket'],row['symbol'],row['volume'],row['sl'],row['tp'],row['mode']) for row in owned]==[(990053392,'USDCAD#',.02,1.4144,1.43154,'exploration')]
     assert [(row['ticket'],row['symbol'],row['magic'],row['volume'],row['sl'],row['tp']) for row in external]==[(7,'GBPUSD#',0,.03,1.31,1.28)]
+
+
+def test_enqueue_accepts_restart_and_single_close_only(tmp_path):
+    import pytest
+    from src.db import Database
+    from src.dashboard import queries as q
+    path = tmp_path / 'bot.db'; Database(path)
+    assert q.enqueue_command('restart', path) and q.enqueue_command('close_position:123', path)
+    for bad in ('close_position:abc', 'close_position:', 'rm -rf', 'restart;stop'):
+        with pytest.raises(ValueError): q.enqueue_command(bad, path)

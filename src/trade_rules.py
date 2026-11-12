@@ -69,6 +69,31 @@ def rebase_signal_levels(signal_entry: float, stop: float, target: float, direct
     return float(executable_entry)-sign*stop_distance, float(executable_entry)+sign*target_distance
 
 
+def hours_for_symbol(symbol: str, universe: dict | None) -> dict | None:
+    """Trading-hours window for this broker symbol: a per-symbol override or the default."""
+    universe = universe or {}
+    hours = universe.get('trading_hours') or {}
+    aliases = universe.get('symbol_aliases', {}) or {}
+    name = str(symbol).upper()
+    for logical, override in (hours.get('per_symbol') or {}).items():
+        patterns = [str(p).upper() for p in aliases.get(logical, [])] + [str(logical).upper()]
+        if any(name == p or name.startswith(p) for p in patterns):
+            return {**{k: v for k, v in hours.items() if k != 'per_symbol'}, **override}
+    return hours
+
+
+def within_trading_hours(now_utc, hours: dict | None) -> bool:
+    """True when new entries are allowed by universe.trading_hours (always True when disabled)."""
+    if not hours or not hours.get('enabled', False): return True
+    from datetime import time as dtime
+    from zoneinfo import ZoneInfo
+    local = now_utc.astimezone(ZoneInfo(str(hours.get('timezone', 'UTC'))))
+    if local.weekday() >= 5: return False
+    start = dtime.fromisoformat(str(hours.get('start', '00:00'))); end = dtime.fromisoformat(str(hours.get('end', '23:59')))
+    now = local.time()
+    return start <= now < end if start <= end else (now >= start or now < end)
+
+
 def spread_within_median(current: float, median: float, ratio: float) -> bool:
     """Reject absent/invalid baseline spreads and abnormally wide current spreads."""
     return all(math.isfinite(float(x)) for x in (current, median, ratio)) and median > 0 and current <= median * ratio

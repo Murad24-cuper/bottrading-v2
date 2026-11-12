@@ -50,7 +50,7 @@ def test_weekend_policy_activates_only_for_enabled_weekend_utc():
 def test_stop_target_from_atr_uses_configured_horizon():
     from pathlib import Path
     import yaml
-    horizon=yaml.safe_load((Path(__file__).resolve().parents[1]/'config.yaml').read_text(encoding='utf-8'))['risk']['move_horizon_minutes']
+    horizon=yaml.safe_load((Path(__file__).resolve().parent / 'fixtures' / 'default_config.yaml').read_text(encoding='utf-8'))['risk']['move_horizon_minutes']
     sl, tp = stop_target_from_atr(100, 'buy', 2, .5, .8, 1.2, horizon)
     assert sl == 100 - 2 * np.sqrt(horizon) * .8
     assert tp == 100 + 2 * np.sqrt(horizon) * 1.2 + .5

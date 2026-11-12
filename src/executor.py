@@ -363,7 +363,18 @@ class Executor:
                         mtf,rising,score=continuation_metrics(candles,direction)
                     except Exception as exc: self._event(f'Could not score extension ticket={p.ticket}: {exc}','WARNING')
                     minimum=float(settings.config['scanner'].get('extend_min_score',raw.get('extend_min_score',.7)))
-                    can_extend=may_extend(in_profit,int(row.get('scale_out_done') or 0)==1,protected,mtf,rising,score,minimum,age,float(raw['max_hold_extended_minutes']))
+                    scaled=int(row.get('scale_out_done') or 0)==1
+                    if not raw.get('extend_requires_scale_out',True):
+                        # Winner without a partial close: extend only after the stop is moved to cover entry + costs.
+                        scaled=True
+                        continuing=in_profit and mtf and rising and score>=minimum and age<float(raw['max_hold_extended_minutes'])
+                        if continuing and not protected:
+                            breakeven=entry+cost_distance if is_buy else entry-cost_distance
+                            valid=breakeven<current if is_buy else breakeven>current
+                            if valid and self.modify_sl_tp(p.ticket,breakeven,float(p.tp or 0)):
+                                protected=True
+                                self._event(f'Stop moved to breakeven before extension ticket={p.ticket} sl={breakeven}')
+                    can_extend=may_extend(in_profit,scaled,protected,mtf,rising,score,minimum,age,float(raw['max_hold_extended_minutes']))
                     if not can_extend:
                         self._event(f'Time stop ticket={p.ticket} refused extension age={age:.1f} score={score:.2f} protected={protected} reason=continuation or protection criteria failed')
                         actions.append(self.close_position(p.ticket,'time')); continue

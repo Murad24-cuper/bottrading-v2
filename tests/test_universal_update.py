@@ -82,7 +82,7 @@ def test_real_account_with_demo_config_still_gets_real_limits():
 
 def test_daily_loss_gate_uses_account_type(tmp_path):
     import yaml
-    config = yaml.safe_load((ROOT / 'config.yaml').read_text(encoding='utf-8'))
+    config = yaml.safe_load((Path(__file__).resolve().parent / 'fixtures' / 'default_config.yaml').read_text(encoding='utf-8'))
     settings = SimpleNamespace(config=config, root=tmp_path)
     signal = SimpleNamespace(symbol='EURUSD')
     now = datetime(2026, 11, 11, 10, tzinfo=timezone.utc)
@@ -117,7 +117,7 @@ def test_brain_is_live_only_when_every_condition_holds(tmp_path):
 
 def test_current_config_keeps_brain_shadow_only():
     import yaml
-    config = yaml.safe_load((ROOT / 'config.yaml').read_text(encoding='utf-8'))
+    config = yaml.safe_load((Path(__file__).resolve().parent / 'fixtures' / 'default_config.yaml').read_text(encoding='utf-8'))
     assert config['brain']['enabled'] is False and config['brain']['shadow'] is True
     rp.validate_demo_risk(config)
     assert rp.base_risk_pct(config, True) == 1.0 and rp.base_risk_pct(config, False) == .25
@@ -266,7 +266,7 @@ def test_linux_entrypoint_matches_windows_stop_semantics():
 
 
 # ---------------------------------------------------------------- scanner integration
-def _live_brain_scanner(tmp_path, monkeypatch, accepted=True, equity=1000, brain_on=True):
+def _live_brain_scanner(tmp_path, monkeypatch, accepted=True, equity=1000, brain_on=True, exploration=None):
     import pandas as pd
     import src.scanner as scanner_module
     import src.brain.memory as memory_module
@@ -284,6 +284,7 @@ def _live_brain_scanner(tmp_path, monkeypatch, accepted=True, equity=1000, brain
               'strategies': {}, 'self_learning': {'bandit_enabled': False},
               'demo_risk': {'risk_per_trade_pct': 1.0, 'brain_min_risk_pct': 1.0, 'brain_max_risk_pct': 2.0},
               'brain': {'enabled': brain_on, 'shadow': not brain_on, 'kelly_fraction': .25}}
+    if exploration is not None: config['demo_exploration'] = exploration
     settings = SimpleNamespace(config=config, risk=SimpleNamespace(risk_per_trade_pct=.25), root=tmp_path, magic_number=7)
     _write_gates(tmp_path / 'data', 'PASS')
     db = Database(tmp_path / 'scan.db'); db.init()
@@ -393,7 +394,7 @@ def test_server_address_is_not_in_the_repository():
 # ---------------------------------------------------------------- group share, per-account drawdown
 def _group_gate(share, trades_today=10, group_trades=10):
     import yaml
-    config = yaml.safe_load((ROOT / 'config.yaml').read_text(encoding='utf-8'))
+    config = yaml.safe_load((Path(__file__).resolve().parent / 'fixtures' / 'default_config.yaml').read_text(encoding='utf-8'))
     config['risk']['max_group_share_today'] = share
     settings = SimpleNamespace(config=config, root=Path('/nonexistent'))
     account = SimpleNamespace(balance=10000, equity=10000, trade_mode=0)
@@ -450,3 +451,114 @@ def test_bot_records_account_login_on_snapshots():
     text = (ROOT / 'src' / 'bot.py').read_text(encoding='utf-8')
     assert "login=getattr(self.client,'account_login',None)" in text
     assert 'get_equity_snapshots_since(cutoff,login)' in text
+
+
+# ---------------------------------------------------------------- exploration stop sizing
+@pytest.mark.parametrize('mode,expected', [('horizon', .8 * 2 * 20 ** .5), ('strategy', 1.0)])
+def test_exploration_stops_follow_the_holding_horizon(tmp_path, monkeypatch, mode, expected):
+    exploration = {'enabled': True, 'stop_mode': mode, 'move_horizon_minutes': 20, 'min_confidence': .45, 'mtf_min_agree': 1,
+                   'min_risk_reward': 1.0, 'max_cost_to_target_ratio': .45, 'max_open_positions': 3, 'max_trades_per_day': 40}
+    scanner, _ = _live_brain_scanner(tmp_path, monkeypatch, brain_on=False, exploration=exploration)
+    result = scanner.scan_once()
+    assert result, 'exploration signal should remain a candidate'
+    signal = result[0].signal
+    assert abs(signal.entry_hint - signal.sl_price) == pytest.approx(expected, rel=.02)
+
+
+# ---------------------------------------------------------------- gold + US indices, US session
+def test_trading_hours_follow_new_york_session_with_dst():
+    from src.trade_rules import within_trading_hours
+    hours = {'enabled': True, 'timezone': 'America/New_York', 'start': '09:30', 'end': '16:00'}
+    winter_open = datetime(2026, 11, 12, 14, 30, tzinfo=timezone.utc)      # 09:30 EST
+    assert within_trading_hours(winter_open, hours)
+    assert not within_trading_hours(winter_open - timedelta(minutes=1), hours)
+    assert not within_trading_hours(datetime(2026, 11, 12, 21, 0, tzinfo=timezone.utc), hours)   # 16:00 EST
+    assert within_trading_hours(datetime(2026, 7, 13, 13, 30, tzinfo=timezone.utc), hours)       # 09:30 EDT (summer)
+    assert not within_trading_hours(datetime(2026, 11, 14, 15, 0, tzinfo=timezone.utc), hours)   # Saturday
+    assert within_trading_hours(datetime(2026, 11, 14, 3, 0, tzinfo=timezone.utc), {'enabled': False})
+
+
+def test_config_trades_only_gold_and_us_indices():
+    import yaml
+    config = yaml.safe_load((Path(__file__).resolve().parent / 'fixtures' / 'default_config.yaml').read_text(encoding='utf-8'))
+    assert config['universe']['focus_symbols'] == ['GOLD', 'US500', 'NAS100', 'US30']
+    assert set(config['universe']['include_groups']) == {'indices', 'metals'}
+    assert config['weekend']['enabled'] is False and config['universe']['trading_hours']['enabled'] is False
+    risk = config['risk']
+    assert (risk['stagnation_minutes'], risk['max_hold_minutes']) == (10, 30)
+    assert risk['tp_move_mult'] / risk['sl_move_mult'] == pytest.approx(1.5)
+    assert config['demo_exploration']['move_horizon_minutes'] == 30
+
+
+def test_us_indices_share_one_position_group():
+    from src.symbols import underlying_group
+    assert {underlying_group(s, 'indices') for s in ('US500Cash', 'US100Cash', 'US30Cash')} == {'us_indices'}
+
+
+def test_outside_hours_blocks_new_entries(tmp_path, monkeypatch):
+    scanner, db = _live_brain_scanner(tmp_path, monkeypatch, brain_on=False)
+    scanner.settings.config['universe'] = {'trading_hours': {'enabled': True, 'timezone': 'UTC', 'start': '00:00', 'end': '00:00'}}
+    assert scanner.scan_once() == []
+
+
+# ---------------------------------------------------------------- per-symbol hours, repeat entries
+def test_gold_has_its_own_longer_window():
+    import yaml
+    from src.trade_rules import hours_for_symbol, within_trading_hours
+    universe = yaml.safe_load((Path(__file__).resolve().parent / 'fixtures' / 'default_config.yaml').read_text(encoding='utf-8'))['universe']
+    # 24h test is on: every hour is allowed while the windows stay stored for re-enabling.
+    assert within_trading_hours(datetime(2026, 11, 12, 4, 0, tzinfo=timezone.utc), hours_for_symbol('US500Cash', universe))
+    universe['trading_hours']['enabled'] = True
+    baku_13 = datetime(2026, 11, 12, 9, 0, tzinfo=timezone.utc)      # 13:00 Baku (winter)
+    baku_0130 = datetime(2026, 11, 12, 21, 30, tzinfo=timezone.utc)  # 01:30 Baku
+    assert within_trading_hours(baku_13, hours_for_symbol('GOLD#', universe))
+    assert not within_trading_hours(baku_13, hours_for_symbol('US500Cash', universe))
+    assert within_trading_hours(baku_0130, hours_for_symbol('GOLD', universe))
+    assert not within_trading_hours(baku_0130, hours_for_symbol('US100Cash', universe))
+    assert not within_trading_hours(datetime(2026, 11, 12, 22, 30, tzinfo=timezone.utc), hours_for_symbol('GOLD#', universe))  # 02:30 Baku
+
+
+def _repeat_gate(open_positions, symbol_trades_today=0, cooldown=False, **risk_overrides):
+    import yaml
+    config = yaml.safe_load((Path(__file__).resolve().parent / 'fixtures' / 'default_config.yaml').read_text(encoding='utf-8'))
+    config['risk'].update(risk_overrides)
+    settings = SimpleNamespace(config=config, root=Path('/nonexistent'))
+    account = SimpleNamespace(balance=10000, equity=10000, trade_mode=0)
+    try:
+        return check_trade_allowed(SimpleNamespace(symbol='GOLD#'), account, open_positions, 0, 0, settings, {}, 'metals',
+                                   datetime(2026, 11, 11, 15, tzinfo=timezone.utc), 0,
+                                   symbol_cooldown=cooldown, symbol_trades_today=symbol_trades_today)[1]
+    except AttributeError:
+        return 'passed the repeat-entry gates'
+
+
+def test_repeat_entries_allowed_by_current_config():
+    open_gold = [{'symbol': 'GOLD#', 'profit': 0, 'asset_group': 'metals'}]
+    assert _repeat_gate(open_gold) not in {'symbol already has open position', 'underlying already has open position'}
+    assert _repeat_gate([], symbol_trades_today=50) != 'maximum trades for symbol today reached'
+
+
+def test_repeat_entry_rules_still_work_when_switched_on():
+    open_gold = [{'symbol': 'GOLD#', 'profit': 0, 'asset_group': 'metals'}]
+    assert _repeat_gate(open_gold, allow_multiple_positions_per_symbol=False) == 'symbol already has open position'
+    assert _repeat_gate([], symbol_trades_today=4, max_trades_per_symbol_per_day=4) == 'maximum trades for symbol today reached'
+
+
+def test_symbol_pauses_off_but_rolling_drawdown_kept():
+    from src.protections import check_protections
+    now = datetime.now(timezone.utc)
+    losses = [{'symbol': 'GOLD#', 'net': -10, 'close_time': (now - timedelta(minutes=i)).isoformat(), 'outcome_r': -1} for i in range(1, 5)]
+    assert check_protections(losses, [], 'GOLD#', now, {'symbol_pauses_enabled': False}) == (False, '')
+    assert check_protections(losses, [], 'GOLD#', now, {})[0]
+    drop = [{'time': (now - timedelta(hours=1)).isoformat(), 'equity': 1000}, {'time': now.isoformat(), 'equity': 900}]
+    assert check_protections([], drop, 'GOLD#', now, {'symbol_pauses_enabled': False, 'rolling_drawdown_pct': 6})[0]
+
+
+def test_config_turns_off_repeat_limits_and_keeps_total_caps():
+    import yaml
+    config = yaml.safe_load((Path(__file__).resolve().parent / 'fixtures' / 'default_config.yaml').read_text(encoding='utf-8'))
+    risk = config['risk']
+    assert risk['symbol_cooldown_minutes'] == 0 and risk['max_trades_per_symbol_per_day'] == 0
+    assert risk['allow_multiple_positions_per_symbol'] is True
+    assert config['protections']['symbol_pauses_enabled'] is False
+    assert risk['max_total_open_risk_pct'] <= 5.0 and config['demo_exploration']['max_open_positions'] <= 3

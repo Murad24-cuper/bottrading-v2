@@ -158,7 +158,7 @@ class Database:
             connection.execute('PRAGMA journal_mode=WAL')
             connection.executescript(SCHEMA)
             trade_columns={row['name'] for row in connection.execute('PRAGMA table_info(trades)')}
-            for name, sql_type in {'timeframe':'TEXT','initial_risk':'REAL','initial_volume':'REAL','scale_out_done':'INTEGER DEFAULT 0','peak_favorable_r':'REAL DEFAULT 0','extension_until':'TEXT','extended_minutes':'INTEGER DEFAULT 0','estimated_spread_cost':'REAL DEFAULT 0','estimated_commission_cost':'REAL DEFAULT 0','features':"TEXT NOT NULL DEFAULT '{}'",'mode':"TEXT NOT NULL DEFAULT 'main'"}.items():
+            for name, sql_type in {'timeframe':'TEXT','initial_risk':'REAL','initial_volume':'REAL','scale_out_done':'INTEGER DEFAULT 0','peak_favorable_r':'REAL DEFAULT 0','extension_until':'TEXT','extended_minutes':'INTEGER DEFAULT 0','estimated_spread_cost':'REAL DEFAULT 0','estimated_commission_cost':'REAL DEFAULT 0','features':"TEXT NOT NULL DEFAULT '{}'",'mode':"TEXT NOT NULL DEFAULT 'main'",'review_outcome':'TEXT','review_r':'REAL','review_delta':'REAL','review_time':'TEXT'}.items():
                 if name not in trade_columns: connection.execute(f'ALTER TABLE trades ADD COLUMN {name} {sql_type}')
             connection.execute('UPDATE trades SET initial_volume=volume WHERE initial_volume IS NULL')
             partial_columns={row['name'] for row in connection.execute('PRAGMA table_info(partial_closes)')}
@@ -275,6 +275,17 @@ class Database:
         with self.connect() as connection:
             result=connection.execute(f"UPDATE trades SET {','.join(k+'=?' for k in columns)} WHERE ticket=? AND status='open'",[values[k] for k in columns]+[ticket])
             return result.rowcount
+    def get_exits_to_review(self,reasons,closed_before,closed_after,limit=20):
+        """Closed bot-decided exits that have not been checked against what the price did next."""
+        marks=','.join('?' for _ in reasons)
+        with self.connect() as connection:
+            return [dict(row) for row in connection.execute(
+                f"SELECT * FROM trades WHERE status='closed' AND review_outcome IS NULL AND close_reason IN ({marks}) AND close_time<=? AND close_time>=? ORDER BY close_time LIMIT ?",
+                (*reasons,str(closed_before),str(closed_after),int(limit)))]
+    def set_exit_review(self,ticket,outcome,review_r=None,delta=None):
+        with self.connect() as connection:
+            connection.execute('UPDATE trades SET review_outcome=?,review_r=?,review_delta=?,review_time=? WHERE ticket=?',
+                               (str(outcome),review_r,delta,datetime.now(timezone.utc).isoformat(),int(ticket)))
     def get_open_trades(self):
         with self.connect() as connection: return [dict(row) for row in connection.execute("SELECT * FROM trades WHERE status='open' ORDER BY open_time")]
     def count_mode_trades_since(self,mode,start,open_only=False):
@@ -616,7 +627,9 @@ class Database:
             return dict(row) if row else None
     def insert_command(self,command,ttl_seconds=60):
         created=datetime.now(timezone.utc); expires=created+timedelta(seconds=int(ttl_seconds))
-        if command not in {'close_all','pause','resume','stop','close_all_stop','status','today','positions','health','diagnose_order','demo_executor_e2e'}: raise ValueError('Unsupported bot command')
+        command=str(command)
+        manual_close=command.startswith('close_position:') and command.split(':',1)[1].isdigit()
+        if command not in {'close_all','pause','resume','stop','close_all_stop','restart','status','today','positions','health','diagnose_order','demo_executor_e2e'} and not manual_close: raise ValueError('Unsupported bot command')
         with self.connect() as connection:
             connection.execute('BEGIN IMMEDIATE')
             active=connection.execute("SELECT id FROM commands WHERE command=? AND status IN ('pending','running') ORDER BY id LIMIT 1",(str(command),)).fetchone()

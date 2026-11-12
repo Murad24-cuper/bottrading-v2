@@ -6,7 +6,7 @@ from src.dashboard import ui
 from src.dashboard.overview import brain_overview, risk_overview, runtime_label, stop_state
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG = yaml.safe_load((ROOT / 'config.yaml').read_text(encoding='utf-8'))
+CONFIG = yaml.safe_load((Path(__file__).resolve().parent / 'fixtures' / 'default_config.yaml').read_text(encoding='utf-8'))
 
 
 def test_demo_risk_overview_matches_bot_profile():

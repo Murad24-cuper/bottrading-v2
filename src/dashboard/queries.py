@@ -258,7 +258,9 @@ def get_day_stats(day,path=None):
     return _rows(path,'SELECT * FROM daily_stats WHERE date=?',(day.isoformat() if hasattr(day,'isoformat') else str(day),))
 
 def enqueue_command(command,path=None,ttl_seconds=60):
-    if command not in {'close_all','pause','resume','stop','close_all_stop'}: raise ValueError('Unsupported dashboard command')
+    allowed={'close_all','pause','resume','stop','close_all_stop','restart'}
+    if command not in allowed and not (str(command).startswith('close_position:') and str(command).split(':',1)[1].isdigit()):
+        raise ValueError('Unsupported dashboard command')
     db=Path(path or DEFAULT_DB_PATH).resolve()
     now=datetime.now(timezone.utc); created=now.isoformat(); expires=(now+timedelta(seconds=int(ttl_seconds))).isoformat()
     with sqlite3.connect(db,timeout=10,isolation_level=None) as connection:
@@ -280,3 +282,23 @@ def get_pnl_since(start_utc,path=None,magic=None):
     row=closed[0] if closed else {'pnl':0,'trades':0,'wins':0}
     trades=int(row['trades'] or 0)
     return {'pnl':float(row['pnl'] or 0)+float((partial[0]['pnl'] if partial else 0) or 0),'trades':trades,'win_rate':(int(row['wins'] or 0)/trades) if trades else 0.0}
+
+def get_trade_history(start_utc,end_utc,path=None,magic=None):
+    """Closed bot trades of every mode (main + exploration) with partial closes counted in the result."""
+    params=[start_utc,end_utc]; magic_sql=''
+    if magic is not None: magic_sql=' AND t.magic=?'; params.append(int(magic))
+    rows=_rows(path,"""SELECT t.ticket,t.open_time,t.close_time,t.symbol,t.direction,t.volume,t.open_price,t.close_price,t.sl,t.tp,
+        t.close_reason,t.strategy,t.mode,
+        COALESCE(t.profit,0)+COALESCE(t.commission,0)+COALESCE(t.swap,0)
+          +COALESCE((SELECT SUM(COALESCE(p.profit,0)+COALESCE(p.commission,0)+COALESCE(p.swap,0)) FROM partial_closes p WHERE p.ticket=t.ticket),0) AS net,
+        COALESCE(t.estimated_spread_cost,0)+COALESCE(t.estimated_commission_cost,0) AS est_cost
+        FROM trades t WHERE t.status='closed' AND t.close_time>=? AND t.close_time<?"""+magic_sql+" ORDER BY t.close_time DESC",tuple(params))
+    return rows
+
+def get_exit_reviews(start_utc,end_utc,path=None,magic=None):
+    """Bot-decided exits with what the price did afterwards (empty until the bot has the review columns)."""
+    columns={row['name'] for row in _rows(path,'PRAGMA table_info(trades)')}
+    if 'review_outcome' not in columns: return []
+    params=[start_utc,end_utc]; magic_sql=''
+    if magic is not None: magic_sql=' AND magic=?'; params.append(int(magic))
+    return _rows(path,"SELECT ticket,symbol,close_time,close_reason,review_outcome,review_r,review_delta FROM trades WHERE status='closed' AND review_outcome IS NOT NULL AND review_outcome<>'unknown' AND close_time>=? AND close_time<?"+magic_sql+" ORDER BY close_time DESC",tuple(params))

@@ -495,3 +495,31 @@ def test_remediate_missing_sl_computes_atr_sl(tmp_path):
         mock_candles.return_value = candle_data
         result = exe.remediate_missing_sl(pos, planned_sl=1.102)  # above ask=1.1011 => invalid buy SL
     assert result is True  # broker accepted
+
+
+def _extension_case(tmp_path, requires):
+    exe, mt5, db = _make_exe(tmp_path)
+    exe.settings.config['risk']['extend_requires_scale_out'] = requires
+    pos = _buy_pos()
+    mt5._positions = [pos]; mt5._tick = SimpleNamespace(bid=1.1005, ask=1.1006)
+    db.open = [dict(_buy_row())]                 # no partial close yet, stop below entry
+    moved = []
+    exe.modify_sl_tp = lambda ticket, sl, tp: moved.append((ticket, sl)) or True
+    opened = datetime.now(timezone.utc) - timedelta(minutes=61)   # just past max_hold_minutes=60
+    with patch('src.executor.mt5_epoch_to_utc', return_value=opened), \
+         patch('src.executor.continuation_metrics', return_value=(True, True, 1.0)), \
+         patch('src.market_data.get_closed_candles', return_value=pd.DataFrame()), \
+         patch('src.market_data.get_cost_estimate', return_value={'cost': 0.0}):
+        actions = exe.enforce_time_stop()
+    return actions, moved, db
+
+
+def test_winner_without_partial_close_is_closed_by_default(tmp_path):
+    actions, moved, db = _extension_case(tmp_path, True)
+    assert len(actions) == 1 and moved == [] and db.open[0]['extension_until'] is None
+
+
+def test_winner_without_partial_close_is_extended_after_breakeven_stop_when_allowed(tmp_path):
+    actions, moved, db = _extension_case(tmp_path, False)
+    assert actions == [] and moved and moved[0][0] == 9 and moved[0][1] >= 1.1
+    assert db.open[0]['extension_until'] is not None

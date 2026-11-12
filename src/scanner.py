@@ -12,7 +12,7 @@ from .features import build_features
 from .risk import calc_volume
 from .strategies import load_strategies
 from .symbols import SymbolService
-from .trade_rules import confidence_allowed, strategy_mtf_allowed, exploration_mtf_allowed, stop_target_from_atr, rebase_signal_levels, spread_within_median, spread_within_expected_move, weekend_mode_active
+from .trade_rules import confidence_allowed, strategy_mtf_allowed, exploration_mtf_allowed, stop_target_from_atr, rebase_signal_levels, spread_within_median, spread_within_expected_move, weekend_mode_active, within_trading_hours, hours_for_symbol
 from .patterns.chart import detect_chart_patterns
 from .patterns.candles import detect_candlestick_patterns
 from .patterns.fibonacci import fibonacci_retracement
@@ -309,6 +309,8 @@ class MarketScanner:
             if analysed and perf_counter()-started>=budget: break
             if global_pause:
                 rejection['global protection pause']+=1; continue
+            if not within_trading_hours(datetime.now(timezone.utc),hours_for_symbol(symbol,self.settings.config.get('universe',{}))):
+                rejection['outside trading hours']+=1; continue
             if symbol in disabled_symbols:
                 rejection[f'protection pause: symbol {symbol}']+=1; continue
             if symbol not in open_symbols:
@@ -421,7 +423,10 @@ class MarketScanner:
                     forex_open=self.symbols.forex_session_open(now)
                 except Exception: forex_open=False
                 weekend=weekend_mode_active(now,self.settings.config,forex_open)
-                if exploration_enabled and signal.sl_price is not None and signal.tp_price is not None and family_entry is not None:
+                # Exploration closes trades within minutes (stagnation/time stop), so by default its SL/TP
+                # follow the same short horizon instead of the strategy's wide multi-hour levels.
+                exploration_stops=str(exploration_cfg.get('stop_mode','horizon')).lower()
+                if exploration_enabled and exploration_stops=='strategy' and signal.sl_price is not None and signal.tp_price is not None and family_entry is not None:
                     signal.sl_price,signal.tp_price=rebase_signal_levels(family_entry,signal.sl_price,signal.tp_price,signal.direction,signal.entry_hint)
                 else:
                     if 'M1' not in candles:
@@ -431,6 +436,9 @@ class MarketScanner:
                     if not math.isfinite(m1_atr) or m1_atr<=0:
                         self._write_signal(signal,0,'M1 ATR unavailable',features=feature_snapshot); continue
                     move_horizon=float(self.settings.config.get('weekend',{}).get('move_horizon_minutes',60)) if weekend else float(risk_cfg['move_horizon_minutes'])
+                    if exploration_enabled and not weekend:
+                        move_horizon=float(exploration_cfg.get('move_horizon_minutes',risk_cfg.get('max_hold_minutes',move_horizon)))
+                    if exploration_enabled: feature_snapshot.setdefault('exploration',{'eligible':True,'soft_failures':[]})['stop_mode']=f'horizon {move_horizon:g} min'
                     signal.sl_price,signal.tp_price=stop_target_from_atr(float(signal.entry_hint),signal.direction,m1_atr,spread,float(risk_cfg['sl_move_mult']),float(risk_cfg['tp_move_mult']),move_horizon)
                 if signal.sl_price is None or signal.tp_price is None or signal.entry_hint is None:
                     self._write_signal(signal,0,'signal missing entry, SL, or TP',features=feature_snapshot); continue
